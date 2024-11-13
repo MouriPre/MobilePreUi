@@ -441,6 +441,138 @@ function Library.new(config)
                 TabFrame.Visible = true
             end
 
+function Section:CreateButton(config)
+    config = config or {}
+    local name = config.Name or "Button"
+    local callback = config.Callback or function() end
+    
+    local ButtonFrame = Instance.new("Frame")
+    ButtonFrame.Name = name.."Button"
+    ButtonFrame.Size = UDim2.new(1, 0, 0, 45)
+    ButtonFrame.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+    ButtonFrame.Parent = self.Container
+    
+    local ButtonCorner = Instance.new("UICorner")
+    ButtonCorner.CornerRadius = UDim.new(0, 12)
+    ButtonCorner.Parent = ButtonFrame
+    
+    local ButtonLabel = Instance.new("TextLabel")
+    ButtonLabel.Name = "Label"
+    ButtonLabel.Size = UDim2.new(1, -20, 1, 0)
+    ButtonLabel.Position = UDim2.new(0, 10, 0, 0)
+    ButtonLabel.BackgroundTransparency = 1
+    ButtonLabel.Text = name
+    ButtonLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+    ButtonLabel.TextSize = 14
+    ButtonLabel.Font = Enum.Font.GothamBold
+    ButtonLabel.TextXAlignment = Enum.TextXAlignment.Left
+    ButtonLabel.Parent = ButtonFrame
+    
+    local TouchButton = Instance.new("TextButton")
+    TouchButton.Name = "TouchButton"
+    TouchButton.Size = UDim2.new(1, 0, 1, 0)
+    TouchButton.BackgroundTransparency = 1
+    TouchButton.Text = ""
+    TouchButton.Parent = ButtonFrame
+    
+    TouchButton.MouseButton1Click:Connect(function()
+        callback()
+        
+        -- Button press animation
+        local ButtonTween = TweenService:Create(
+            ButtonFrame,
+            TweenInfo.new(0.1),
+            {Size = UDim2.new(1, 0, 0, 42)}
+        )
+        ButtonTween:Play()
+        
+        wait(0.1)
+        
+        local ButtonReleaseTween = TweenService:Create(
+            ButtonFrame,
+            TweenInfo.new(0.1),
+            {Size = UDim2.new(1, 0, 0, 45)}
+        )
+        ButtonReleaseTween:Play()
+    end)
+end
+
+function Section:CreateToggle(config)
+    config = config or {}
+    local name = config.Name or "Toggle"
+    local default = config.Default or false
+    local callback = config.Callback or function() end
+    
+    local ToggleFrame = Instance.new("Frame")
+    ToggleFrame.Name = name.."Toggle"
+    ToggleFrame.Size = UDim2.new(1, 0, 0, 45)
+    ToggleFrame.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+    ToggleFrame.Parent = self.Container
+    
+    local ToggleCorner = Instance.new("UICorner")
+    ToggleCorner.CornerRadius = UDim.new(0, 12)
+    ToggleCorner.Parent = ToggleFrame
+    
+    local ToggleLabel = Instance.new("TextLabel")
+    ToggleLabel.Name = "Label"
+    ToggleLabel.Size = UDim2.new(1, -65, 1, 0)
+    ToggleLabel.Position = UDim2.new(0, 10, 0, 0)
+    ToggleLabel.BackgroundTransparency = 1
+    ToggleLabel.Text = name
+    ToggleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+    ToggleLabel.TextSize = 14
+    ToggleLabel.Font = Enum.Font.GothamBold
+    ToggleLabel.TextXAlignment = Enum.TextXAlignment.Left
+    ToggleLabel.Parent = ToggleFrame
+    
+    local ToggleButton = Instance.new("Frame")
+    ToggleButton.Name = "ToggleButton"
+    ToggleButton.Size = UDim2.new(0, 45, 0, 25)
+    ToggleButton.Position = UDim2.new(1, -55, 0.5, -12.5)
+    ToggleButton.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+    ToggleButton.Parent = ToggleFrame
+    
+    local ToggleButtonCorner = Instance.new("UICorner")
+    ToggleButtonCorner.CornerRadius = UDim.new(0, 12)
+    ToggleButtonCorner.Parent = ToggleButton
+    
+    local ToggleIndicator = Instance.new("Frame")
+    ToggleIndicator.Name = "Indicator"
+    ToggleIndicator.Size = UDim2.new(0, 21, 0, 21)
+    ToggleIndicator.Position = UDim2.new(0, 2, 0.5, -10.5)
+    ToggleIndicator.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+    ToggleIndicator.Parent = ToggleButton
+    
+    local ToggleIndicatorCorner = Instance.new("UICorner")
+    ToggleIndicatorCorner.CornerRadius = UDim.new(1, 0)
+    ToggleIndicatorCorner.Parent = ToggleIndicator
+    
+    local Enabled = default
+    local function UpdateToggle()
+        local TargetPosition = Enabled and UDim2.new(1, -23, 0.5, -10.5) or UDim2.new(0, 2, 0.5, -10.5)
+        local TargetColor = Enabled and Color3.fromRGB(0, 170, 255) or Color3.fromRGB(25, 25, 25)
+        
+        TweenService:Create(ToggleIndicator, TweenInfo.new(0.2), {Position = TargetPosition}):Play()
+        TweenService:Create(ToggleButton, TweenInfo.new(0.2), {BackgroundColor3 = TargetColor}):Play()
+        callback(Enabled)
+    end
+    
+    UpdateToggle()
+    
+    local TouchButton = Instance.new("TextButton")
+    TouchButton.Name = "TouchButton"
+    TouchButton.Size = UDim2.new(1, 0, 1, 0)
+    TouchButton.BackgroundTransparency = 1
+    TouchButton.Text = ""
+    TouchButton.Parent = ToggleFrame
+    
+    TouchButton.MouseButton1Click:Connect(function()
+        Enabled = not Enabled
+        UpdateToggle()
+    end)
+end
+
+
             -- Add tab to window
             table.insert(Window.Tabs, tab)
             return tab
