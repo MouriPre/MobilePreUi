@@ -32,6 +32,7 @@ ToggleButton.Size = toggleColors.Size
 ToggleButton.Position = toggleColors.Position
 ToggleButton.BackgroundColor3 = toggleColors.Background
 ToggleButton.BorderSizePixel = 0
+ToggleButton.Image = "rbxassetid://104809137040953"
 ToggleButton.Text = "ON"
 ToggleButton.TextColor3 = toggleColors.Text
 ToggleButton.TextSize = 14
