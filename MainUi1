@@ -25,6 +25,43 @@ function UILibrary.new(title, toggleConfig)
     ScreenGUI.Parent = game:GetService("CoreGui")
     ScreenGUI.ResetOnSpawn = false
     
+    -- Toggle Button (Always visible)
+    local ToggleButton = Instance.new("TextButton")
+ToggleButton.Name = "ToggleButton"
+ToggleButton.Size = toggleColors.Size
+ToggleButton.Position = toggleColors.Position
+ToggleButton.BackgroundColor3 = toggleColors.Background
+ToggleButton.BorderSizePixel = 0
+ToggleButton.Text = "ON"
+ToggleButton.TextColor3 = toggleColors.Text
+ToggleButton.TextSize = 14
+ToggleButton.Font = Enum.Font.GothamBold
+ToggleButton.Parent = ScreenGUI
+ToggleButton.AutoButtonColor = false
+ToggleButton.ZIndex = 9999
+
+local ToggleRotation = Instance.new("UIScale")
+ToggleRotation.Scale = 1
+ToggleRotation.Parent = ToggleButton
+
+    -- Add corner radius to toggle button
+    local ToggleCorner = Instance.new("UICorner")
+    ToggleCorner.CornerRadius = UDim.new(0, 8)
+    ToggleCorner.Parent = ToggleButton
+
+    -- Add toggle button shadow
+    local ToggleShadow = Instance.new("ImageLabel")
+    ToggleShadow.Name = "Shadow"
+    ToggleShadow.AnchorPoint = Vector2.new(0.5, 0.5)
+    ToggleShadow.BackgroundTransparency = 1
+    ToggleShadow.Position = UDim2.new(0.5, 0, 0.5, 0)
+    ToggleShadow.Size = UDim2.new(1, 24, 1, 24)
+    ToggleShadow.ZIndex = 9998
+    ToggleShadow.Image = "rbxassetid://6015897843"
+    ToggleShadow.ImageColor3 = Color3.new(0, 0, 0)
+    ToggleShadow.ImageTransparency = 0.5
+    ToggleShadow.Parent = ToggleButton
+    
     -- Main Frame
     local MainFrame = Instance.new("Frame")
     MainFrame.Name = "MainFrame"
@@ -35,17 +72,7 @@ function UILibrary.new(title, toggleConfig)
     MainFrame.Active = true
     MainFrame.Draggable = true
     MainFrame.Parent = ScreenGUI
-    MainFrame.ClipsDescendants = true
-
-    -- Background Image
-    local Background = Instance.new("ImageLabel")
-    Background.Name = "Background"
-    Background.Size = UDim2.new(1, 0, 1, 0)
-    Background.Position = UDim2.new(0, 0, 0, 0)
-    Background.BackgroundTransparency = 1
-    Background.Image = "rbxassetid://104809137040953"
-    Background.ScaleType = Enum.ScaleType.Stretch
-    Background.Parent = MainFrame
+    MainFrame.ClipsDescendants = true -- For smooth animation
 
     -- Add blur effect
     local Blur = Instance.new("BlurEffect")
@@ -121,59 +148,214 @@ function UILibrary.new(title, toggleConfig)
     ContentContainer.BackgroundTransparency = 1
     ContentContainer.Parent = MainFrame
 
+    -- Toggle button hover effect
+    ToggleButton.MouseEnter:Connect(function()
+        TweenService:Create(ToggleButton, TweenInfo.new(0.3), {BackgroundColor3 = toggleColors.BackgroundHover}):Play()
+    end)
+
+    ToggleButton.MouseLeave:Connect(function()
+        TweenService:Create(ToggleButton, TweenInfo.new(0.3), {BackgroundColor3 = toggleColors.Background}):Play()
+    end)
+
     -- Animation functions
     local function showUI()
-        MainFrame.Size = UDim2.new(0, 0, 0, 0)
-        MainFrame.Position = UDim2.new(0.5, 0, 0.5, 0)
-        MainFrame.BackgroundTransparency = 1
-        MainFrame.Visible = true
-        TopBar.BackgroundTransparency = 1
-        TitleLabel.TextTransparency = 1
-        Shadow.ImageTransparency = 1
-        Background.ImageTransparency = 1
+    -- Reset MainFrame properties
+    MainFrame.Size = UDim2.new(0, 0, 0, 0)
+    MainFrame.Position = UDim2.new(0.5, 0, 0.5, 0)
+    MainFrame.BackgroundTransparency = 1
+    MainFrame.Visible = true
+    TopBar.BackgroundTransparency = 1
+    TitleLabel.TextTransparency = 1
+    Shadow.ImageTransparency = 1
         
         local tweenInfo = TweenInfo.new(0.6, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
-        local sizeTween = TweenService:Create(MainFrame, tweenInfo, {
-            Size = UDim2.new(0, 400, 0, 300),
-            Position = UDim2.new(0.5, -200, 0.5, -150),
-            BackgroundTransparency = 0
-        })
+    local sizeTween = TweenService:Create(MainFrame, tweenInfo, {
+        Size = UDim2.new(0, 400, 0, 300),
+        Position = UDim2.new(0.5, -200, 0.5, -150),
+        BackgroundTransparency = 0
+    })
+    
+    local topBarTween = TweenService:Create(TopBar, TweenInfo.new(0.4, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
+        BackgroundTransparency = 0
+    })
+    
+    local titleTween = TweenService:Create(TitleLabel, TweenInfo.new(0.4, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
+        TextTransparency = 0
+    })
+    
+    local shadowTween = TweenService:Create(Shadow, TweenInfo.new(0.4, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
+        ImageTransparency = 0.5
+    })
+    
+    local blurTween = TweenService:Create(Blur, TweenInfo.new(0.4), {Size = 10})
+    
+    local rotationTween = TweenService:Create(ToggleRotation, TweenInfo.new(0.4, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+        Scale = 0.8
+    })
+    
+    local colorTween = TweenService:Create(ToggleButton, TweenInfo.new(0.4), {
+        BackgroundColor3 = Color3.fromRGB(255, 75, 75),
+        TextColor3 = Color3.fromRGB(255, 255, 255)
+    })
         
-        local topBarTween = TweenService:Create(TopBar, TweenInfo.new(0.4, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
-            BackgroundTransparency = 0
-        })
         
-        local titleTween = TweenService:Create(TitleLabel, TweenInfo.new(0.4, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
-            TextTransparency = 0
-        })
-        
-        local shadowTween = TweenService:Create(Shadow, TweenInfo.new(0.4, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
-            ImageTransparency = 0.5
-        })
-        
-        local backgroundTween = TweenService:Create(Background, TweenInfo.new(0.4, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
-            ImageTransparency = 0
-        })
-        
-        local blurTween = TweenService:Create(Blur, TweenInfo.new(0.4), {Size = 10})
+   sizeTween:Play()
+    topBarTween:Play()
+    titleTween:Play()
+    shadowTween:Play()
+    blurTween:Play()
+    rotationTween:Play()
+    colorTween:Play()
+end
+
+    local function hideUI()
+    local tweenInfo = TweenInfo.new(0.6, Enum.EasingStyle.Back, Enum.EasingDirection.In)
+    local sizeTween = TweenService:Create(MainFrame, tweenInfo, {
+        Size = UDim2.new(0, 0, 0, 0),
+        Position = UDim2.new(0.5, 0, 0.5, 0),
+        BackgroundTransparency = 1
+    })
+    
+    local topBarTween = TweenService:Create(TopBar, TweenInfo.new(0.3, Enum.EasingStyle.Quart, Enum.EasingDirection.In), {
+        BackgroundTransparency = 1
+    })
+    
+    local titleTween = TweenService:Create(TitleLabel, TweenInfo.new(0.3, Enum.EasingStyle.Quart, Enum.EasingDirection.In), {
+        TextTransparency = 1
+    })
+    
+    local shadowTween = TweenService:Create(Shadow, TweenInfo.new(0.3, Enum.EasingStyle.Quart, Enum.EasingDirection.In), {
+        ImageTransparency = 1
+    })
+    
+    local blurTween = TweenService:Create(Blur, TweenInfo.new(0.3), {Size = 0})
+    
+    -- Toggle button animation
+    local rotationTween = TweenService:Create(ToggleRotation, TweenInfo.new(0.4, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+        Scale = 1
+    })
+    
+    local colorTween = TweenService:Create(ToggleButton, TweenInfo.new(0.4), {
+        BackgroundColor3 = toggleColors.Background,
+        TextColor3 = toggleColors.Text
+    })
+    
+    sizeTween.Completed:Connect(function()
+        MainFrame.Visible = false
+    end)
         
         sizeTween:Play()
-        topBarTween:Play()
-        titleTween:Play()
-        shadowTween:Play()
-        backgroundTween:Play()
-        blurTween:Play()
+    topBarTween:Play()
+    titleTween:Play()
+    shadowTween:Play()
+    blurTween:Play()
+    rotationTween:Play()
+    colorTween:Play()
+end
+
+    -- Toggle Button Functionality
+    local isUIVisible = true
+local isAnimating = false
+
+ToggleButton.MouseButton1Click:Connect(function()
+    if isAnimating then return end
+    isAnimating = true
+    
+    isUIVisible = not isUIVisible
+    if isUIVisible then
+        showUI()
+        ToggleButton.Text = "OFF"
+    else
+        hideUI()
+        ToggleButton.Text = "ON"
     end
+    
+    local bounceTween = TweenService:Create(ToggleRotation, TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+        Scale = 0.8
+    })
+    
+    local bounceBackTween = TweenService:Create(ToggleRotation, TweenInfo.new(0.35, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+        Scale = isUIVisible and 0.8 or 1
+    })
+    
+    bounceTween:Play()
+    bounceTween.Completed:Connect(function()
+        bounceBackTween:Play()
+        bounceBackTween.Completed:Connect(function()
+            isAnimating = false
+        end)
+    end)
+end)
 
-    showUI()
+ToggleButton.MouseEnter:Connect(function()
+    if not isAnimating then
+        local scaleTween = TweenService:Create(ToggleRotation, TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+            Scale = isUIVisible and 0.85 or 1.1
+        })
+        scaleTween:Play()
+        
+        TweenService:Create(ToggleButton, TweenInfo.new(0.3), {
+            BackgroundColor3 = toggleColors.BackgroundHover
+        }):Play()
+    end
+end)
 
-    -- Method to change toggle colors
+ToggleButton.MouseLeave:Connect(function()
+    if not isAnimating then
+        local scaleTween = TweenService:Create(ToggleRotation, TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+            Scale = isUIVisible and 0.8 or 1
+        })
+        scaleTween:Play()
+        
+        TweenService:Create(ToggleButton, TweenInfo.new(0.3), {
+            BackgroundColor3 = isUIVisible and Color3.fromRGB(255, 75, 75) or toggleColors.Background
+        }):Play()
+    end
+end)
+
+    -- Make toggle button draggable
+    local dragging = false
+    local dragInput
+    local dragStart
+    local startPos
+
+    ToggleButton.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            dragging = true
+            dragStart = input.Position
+            startPos = ToggleButton.Position
+        end
+    end)
+
+    UserInputService.InputChanged:Connect(function(input)
+        if input == dragInput and dragging then
+            local delta = input.Position - dragStart
+            ToggleButton.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+        end
+    end)
+
+    UserInputService.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            dragging = false
+        end
+    end)
+
+    ToggleButton.InputChanged:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseMovement then
+            dragInput = input
+        end
+    end)
+
+    -- Method to change toggle button colors
     local gui = {}
     
     function gui.UpdateToggleColors(newConfig)
         toggleColors.Background = newConfig.Background or toggleColors.Background
         toggleColors.BackgroundHover = newConfig.BackgroundHover or toggleColors.BackgroundHover
         toggleColors.Text = newConfig.Text or toggleColors.Text
+        
+        ToggleButton.BackgroundColor3 = toggleColors.Background
+        ToggleButton.TextColor3 = toggleColors.Text
     end
 
     return gui, ContentContainer
