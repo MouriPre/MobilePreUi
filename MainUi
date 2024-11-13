@@ -1,0 +1,213 @@
+local UILibrary = {}
+local TweenService = game:GetService("TweenService")
+local UserInputService = game:GetService("UserInputService")
+
+-- Utility Functions
+local function CreateTween(instance, properties, duration, style, direction)
+    local tween = TweenService:Create(
+        instance,
+        TweenInfo.new(duration or 0.3, style or Enum.EasingStyle.Quart, direction or Enum.EasingDirection.Out),
+        properties
+    )
+    return tween
+end
+
+function UILibrary:CreateWindow(config)
+    config = config or {}
+    local Window = {}
+    
+    -- Main Container
+    local MainGui = Instance.new("ScreenGui")
+    MainGui.Name = "MobileUILibrary"
+    MainGui.ResetOnSpawn = false
+    MainGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+    
+    -- Prevent multiple instances
+    if game:GetService("CoreGui"):FindFirstChild("MobileUILibrary") then
+        game:GetService("CoreGui"):FindFirstChild("MobileUILibrary"):Destroy()
+    end
+    MainGui.Parent = game:GetService("CoreGui")
+    
+    -- Main Frame
+    local MainFrame = Instance.new("Frame")
+    MainFrame.Name = "MainFrame"
+    MainFrame.Size = UDim2.new(1, 0, 1, 0)
+    MainFrame.BackgroundTransparency = 1
+    MainFrame.Parent = MainGui
+    
+    -- Navigation Bar (Bottom)
+    local NavBar = Instance.new("Frame")
+    NavBar.Name = "NavigationBar"
+    NavBar.Size = UDim2.new(1, 0, 0, 60)
+    NavBar.Position = UDim2.new(0, 0, 1, -60)
+    NavBar.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+    NavBar.Parent = MainFrame
+    
+    local NavBarCorner = Instance.new("UICorner")
+    NavBarCorner.CornerRadius = UDim.new(0, 20)
+    NavBarCorner.Parent = NavBar
+    
+    -- Nav Items Container
+    local NavItemsContainer = Instance.new("Frame")
+    NavItemsContainer.Name = "NavItems"
+    NavItemsContainer.Size = UDim2.new(1, -40, 1, 0)
+    NavItemsContainer.Position = UDim2.new(0, 20, 0, 0)
+    NavItemsContainer.BackgroundTransparency = 1
+    NavItemsContainer.Parent = NavBar
+    
+    local NavLayout = Instance.new("UIListLayout")
+    NavLayout.FillDirection = Enum.FillDirection.Horizontal
+    NavLayout.HorizontalAlignment = Enum.HorizontalAlignment.Left
+    NavLayout.VerticalAlignment = Enum.VerticalAlignment.Center
+    NavLayout.Padding = UDim.new(0, 15)
+    NavLayout.Parent = NavItemsContainer
+    
+    -- Content Container
+    local ContentContainer = Instance.new("Frame")
+    ContentContainer.Name = "ContentContainer"
+    ContentContainer.Size = UDim2.new(1, 0, 1, -70)
+    ContentContainer.BackgroundTransparency = 1
+    ContentContainer.Parent = MainFrame
+    
+    -- Tab Functions
+    local ActiveTab = nil
+    
+    function Window:CreateTab(name, icon)
+        local Tab = {}
+        
+        -- Nav Item
+        local NavItem = Instance.new("Frame")
+        NavItem.Name = name.."NavItem"
+        NavItem.Size = UDim2.new(0, 50, 0, 50)
+        NavItem.BackgroundTransparency = 1
+        NavItem.Parent = NavItemsContainer
+        
+        local ItemButton = Instance.new("TextButton")
+        ItemButton.Name = "Button"
+        ItemButton.Size = UDim2.new(1, 0, 1, 0)
+        ItemButton.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+        ItemButton.Text = ""
+        ItemButton.Parent = NavItem
+        
+        local ItemCorner = Instance.new("UICorner")
+        ItemCorner.CornerRadius = UDim.new(0, 15)
+        ItemCorner.Parent = ItemButton
+        
+        local ItemIcon = Instance.new("ImageLabel")
+        ItemIcon.Name = "Icon"
+        ItemIcon.Size = UDim2.new(0, 30, 0, 30)
+        ItemIcon.Position = UDim2.new(0.5, -15, 0, 5)
+        ItemIcon.BackgroundTransparency = 1
+        ItemIcon.Image = icon or ""
+        ItemIcon.ImageColor3 = Color3.fromRGB(150, 150, 150)
+        ItemIcon.Parent = ItemButton
+        
+        local ItemLabel = Instance.new("TextLabel")
+        ItemLabel.Name = "Label"
+        ItemLabel.Size = UDim2.new(1, 0, 0, 15)
+        ItemLabel.Position = UDim2.new(0, 0, 1, -15)
+        ItemLabel.BackgroundTransparency = 1
+        ItemLabel.Text = name
+        ItemLabel.TextColor3 = Color3.fromRGB(150, 150, 150)
+        ItemLabel.TextSize = 10
+        ItemLabel.Font = Enum.Font.GothamBold
+        ItemLabel.Parent = ItemButton
+        
+        -- Content Frame
+        local ContentFrame = Instance.new("ScrollingFrame")
+        ContentFrame.Name = name.."Content"
+        ContentFrame.Size = UDim2.new(1, -40, 1, 0)
+        ContentFrame.Position = UDim2.new(0, 20, 0, 0)
+        ContentFrame.BackgroundTransparency = 1
+        ContentFrame.ScrollBarThickness = 0
+        ContentFrame.Visible = false
+        ContentFrame.Parent = ContentContainer
+        
+        local ContentPadding = Instance.new("UIPadding")
+        ContentPadding.PaddingTop = UDim.new(0, 20)
+        ContentPadding.Parent = ContentFrame
+        
+        local ContentList = Instance.new("UIListLayout")
+        ContentList.SortOrder = Enum.SortOrder.LayoutOrder
+        ContentList.Padding = UDim.new(0, 10)
+        ContentList.Parent = ContentFrame
+        
+        -- Tab Selection
+        ItemButton.MouseButton1Click:Connect(function()
+            if ActiveTab then
+                -- Deactivate current tab
+                local oldIcon = ActiveTab.NavItem.Button.Icon
+                local oldLabel = ActiveTab.NavItem.Button.Label
+                CreateTween(oldIcon, {ImageColor3 = Color3.fromRGB(150, 150, 150)}, 0.3):Play()
+                CreateTween(oldLabel, {TextColor3 = Color3.fromRGB(150, 150, 150)}, 0.3):Play()
+                ActiveTab.ContentFrame.Visible = false
+            end
+            
+            -- Activate new tab
+            CreateTween(ItemIcon, {ImageColor3 = Color3.fromRGB(255, 255, 255)}, 0.3):Play()
+            CreateTween(ItemLabel, {TextColor3 = Color3.fromRGB(255, 255, 255)}, 0.3):Play()
+            ContentFrame.Visible = true
+            
+            ActiveTab = {
+                NavItem = NavItem,
+                ContentFrame = ContentFrame
+            }
+        end)
+        
+        -- Auto select first tab
+        if not ActiveTab then
+            ItemButton.MouseButton1Click:Fire()
+        end
+        
+        -- Section Functions
+        function Tab:CreateSection(name)
+            local Section = {}
+            
+            local SectionFrame = Instance.new("Frame")
+            SectionFrame.Name = name.."Section"
+            SectionFrame.Size = UDim2.new(1, 0, 0, 30) -- Will auto-resize
+            SectionFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+            SectionFrame.Parent = ContentFrame
+            
+            local SectionCorner = Instance.new("UICorner")
+            SectionCorner.CornerRadius = UDim.new(0, 15)
+            SectionCorner.Parent = SectionFrame
+            
+            local SectionLabel = Instance.new("TextLabel")
+            SectionLabel.Size = UDim2.new(1, -20, 0, 30)
+            SectionLabel.Position = UDim2.new(0, 10, 0, 0)
+            SectionLabel.BackgroundTransparency = 1
+            SectionLabel.Text = name
+            SectionLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+            SectionLabel.TextSize = 14
+            SectionLabel.Font = Enum.Font.GothamBold
+            SectionLabel.TextXAlignment = Enum.TextXAlignment.Left
+            SectionLabel.Parent = SectionFrame
+            
+            local SectionContent = Instance.new("Frame")
+            SectionContent.Name = "Content"
+            SectionContent.Size = UDim2.new(1, -20, 0, 0)
+            SectionContent.Position = UDim2.new(0, 10, 0, 35)
+            SectionContent.BackgroundTransparency = 1
+            SectionContent.Parent = SectionFrame
+            
+            local SectionList = Instance.new("UIListLayout")
+            SectionList.SortOrder = Enum.SortOrder.LayoutOrder
+            SectionList.Padding = UDim.new(0, 10)
+            SectionList.Parent = SectionContent
+            
+            -- Auto-size section
+            SectionList:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+                SectionFrame.Size = UDim2.new(1, 0, 0, SectionList.AbsoluteContentSize.Y + 45)
+            end)
+            
+            return Section
+        end
+        
+        return Tab
+    end
+    
+    return Window
+end
+
+return UILibrary
