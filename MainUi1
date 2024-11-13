@@ -26,11 +26,10 @@ function UILibrary.new(title, toggleConfig)
     ScreenGUI.ResetOnSpawn = false
     
     -- Toggle Button (Always visible)
-    local ToggleButton = Instance.new("TextButton")
+    local ToggleButton = Instance.new("ImageButton")
 ToggleButton.Name = "ToggleButton"
 ToggleButton.Size = toggleColors.Size
 ToggleButton.Position = toggleColors.Position
-ToggleButton.BackgroundColor3 = toggleColors.Background
 ToggleButton.BorderSizePixel = 0
 ToggleButton.Image = "rbxassetid://104809137040953"
 ToggleButton.Text = "ON"
@@ -40,6 +39,7 @@ ToggleButton.Font = Enum.Font.GothamBold
 ToggleButton.Parent = ScreenGUI
 ToggleButton.AutoButtonColor = false
 ToggleButton.ZIndex = 9999
+
 
 local ToggleRotation = Instance.new("UIScale")
 ToggleRotation.Scale = 1
