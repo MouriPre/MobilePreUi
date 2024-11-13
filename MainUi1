@@ -2,8 +2,18 @@ local UILibrary = {}
 local UserInputService = game:GetService("UserInputService")
 local TweenService = game:GetService("TweenService")
 
-function UILibrary.new(title)
-    -- Remove existing GUI if it exists
+function UILibrary.new(title, toggleConfig)
+    -- Default toggle button config
+    toggleConfig = toggleConfig or {}
+    local toggleColors = {
+        Background = toggleConfig.Background or Color3.fromRGB(40, 40, 40),
+        BackgroundHover = toggleConfig.BackgroundHover or Color3.fromRGB(60, 60, 60),
+        Text = toggleConfig.Text or Color3.fromRGB(255, 255, 255),
+        Size = toggleConfig.Size or UDim2.new(0, 40, 0, 40),
+        Position = toggleConfig.Position or UDim2.new(0, 10, 0.5, -20)
+    }
+
+    -- Remove existing GUI
     local existingGUI = game:GetService("CoreGui"):FindFirstChild(title)
     if existingGUI then
         existingGUI:Destroy()
@@ -18,17 +28,16 @@ function UILibrary.new(title)
     -- Toggle Button (Always visible)
     local ToggleButton = Instance.new("TextButton")
     ToggleButton.Name = "ToggleButton"
-    ToggleButton.Size = UDim2.new(0, 40, 0, 40)
-    ToggleButton.Position = UDim2.new(0, 10, 0.5, -20)
-    ToggleButton.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+    ToggleButton.Size = toggleColors.Size
+    ToggleButton.Position = toggleColors.Position
+    ToggleButton.BackgroundColor3 = toggleColors.Background
     ToggleButton.BorderSizePixel = 0
     ToggleButton.Text = "ON"
-    ToggleButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+    ToggleButton.TextColor3 = toggleColors.Text
     ToggleButton.TextSize = 14
     ToggleButton.Font = Enum.Font.SourceSansBold
     ToggleButton.Parent = ScreenGUI
     ToggleButton.AutoButtonColor = false
-    ToggleButton.Visible = false -- Initially hidden
 
     -- Add corner radius to toggle button
     local ToggleCorner = Instance.new("UICorner")
@@ -57,7 +66,7 @@ function UILibrary.new(title)
     -- Title
     local TitleLabel = Instance.new("TextLabel")
     TitleLabel.Name = "Title"
-    TitleLabel.Size = UDim2.new(1, -30, 1, 0)
+    TitleLabel.Size = UDim2.new(1, -20, 1, 0)
     TitleLabel.Position = UDim2.new(0, 10, 0, 0)
     TitleLabel.BackgroundTransparency = 1
     TitleLabel.Text = title
@@ -66,19 +75,6 @@ function UILibrary.new(title)
     TitleLabel.Font = Enum.Font.SourceSansBold
     TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
     TitleLabel.Parent = TopBar
-
-    -- Close Button
-    local CloseButton = Instance.new("TextButton")
-    CloseButton.Name = "CloseButton"
-    CloseButton.Size = UDim2.new(0, 30, 0, 30)
-    CloseButton.Position = UDim2.new(1, -30, 0, 0)
-    CloseButton.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
-    CloseButton.BorderSizePixel = 0
-    CloseButton.Text = "X"
-    CloseButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-    CloseButton.TextSize = 16
-    CloseButton.Font = Enum.Font.SourceSansBold
-    CloseButton.Parent = TopBar
     
     -- Add Corner Radius
     local UICorner = Instance.new("UICorner")
@@ -105,23 +101,19 @@ function UILibrary.new(title)
 
     -- Toggle button hover effect
     ToggleButton.MouseEnter:Connect(function()
-        TweenService:Create(ToggleButton, TweenInfo.new(0.3), {BackgroundColor3 = Color3.fromRGB(60, 60, 60)}):Play()
+        TweenService:Create(ToggleButton, TweenInfo.new(0.3), {BackgroundColor3 = toggleColors.BackgroundHover}):Play()
     end)
 
     ToggleButton.MouseLeave:Connect(function()
-        TweenService:Create(ToggleButton, TweenInfo.new(0.3), {BackgroundColor3 = Color3.fromRGB(40, 40, 40)}):Play()
-    end)
-
-    -- Close Button Functionality
-    CloseButton.MouseButton1Click:Connect(function()
-        MainFrame.Visible = false
-        ToggleButton.Visible = true -- Show toggle button when UI is closed
+        TweenService:Create(ToggleButton, TweenInfo.new(0.3), {BackgroundColor3 = toggleColors.Background}):Play()
     end)
 
     -- Toggle Button Functionality
+    local isUIVisible = true
     ToggleButton.MouseButton1Click:Connect(function()
-        MainFrame.Visible = true
-        ToggleButton.Visible = false -- Hide toggle button when UI is shown
+        isUIVisible = not isUIVisible
+        MainFrame.Visible = isUIVisible
+        ToggleButton.Text = isUIVisible and "OFF" or "ON"
     end)
 
     -- Make toggle button draggable
@@ -157,7 +149,19 @@ function UILibrary.new(title)
         end
     end)
 
-    return MainFrame
+    -- Method to change toggle button colors
+    local gui = {}
+    
+    function gui.UpdateToggleColors(newConfig)
+        toggleColors.Background = newConfig.Background or toggleColors.Background
+        toggleColors.BackgroundHover = newConfig.BackgroundHover or toggleColors.BackgroundHover
+        toggleColors.Text = newConfig.Text or toggleColors.Text
+        
+        ToggleButton.BackgroundColor3 = toggleColors.Background
+        ToggleButton.TextColor3 = toggleColors.Text
+    end
+
+    return gui
 end
 
 return UILibrary
