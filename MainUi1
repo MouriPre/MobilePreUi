@@ -3,8 +3,6 @@ local UserInputService = game:GetService("UserInputService")
 local TweenService = game:GetService("TweenService")
 
 function UILibrary.new(title)
-    local gui = {}
-    
     -- Remove existing GUI if it exists
     local existingGUI = game:GetService("CoreGui"):FindFirstChild(title)
     if existingGUI then
@@ -16,6 +14,26 @@ function UILibrary.new(title)
     ScreenGUI.Name = title
     ScreenGUI.Parent = game:GetService("CoreGui")
     ScreenGUI.ResetOnSpawn = false
+    
+    -- Toggle Button (Always visible)
+    local ToggleButton = Instance.new("TextButton")
+    ToggleButton.Name = "ToggleButton"
+    ToggleButton.Size = UDim2.new(0, 40, 0, 40)
+    ToggleButton.Position = UDim2.new(0, 10, 0.5, -20)
+    ToggleButton.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+    ToggleButton.BorderSizePixel = 0
+    ToggleButton.Text = "ON"
+    ToggleButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+    ToggleButton.TextSize = 14
+    ToggleButton.Font = Enum.Font.SourceSansBold
+    ToggleButton.Parent = ScreenGUI
+    ToggleButton.AutoButtonColor = false
+    ToggleButton.Visible = false -- Initially hidden
+
+    -- Add corner radius to toggle button
+    local ToggleCorner = Instance.new("UICorner")
+    ToggleCorner.CornerRadius = UDim.new(0, 5)
+    ToggleCorner.Parent = ToggleButton
     
     -- Main Frame
     local MainFrame = Instance.new("Frame")
@@ -39,7 +57,7 @@ function UILibrary.new(title)
     -- Title
     local TitleLabel = Instance.new("TextLabel")
     TitleLabel.Name = "Title"
-    TitleLabel.Size = UDim2.new(1, -60, 1, 0)
+    TitleLabel.Size = UDim2.new(1, -30, 1, 0)
     TitleLabel.Position = UDim2.new(0, 10, 0, 0)
     TitleLabel.BackgroundTransparency = 1
     TitleLabel.Text = title
@@ -48,19 +66,6 @@ function UILibrary.new(title)
     TitleLabel.Font = Enum.Font.SourceSansBold
     TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
     TitleLabel.Parent = TopBar
-
-    -- Minimize Button
-    local MinimizeButton = Instance.new("TextButton")
-    MinimizeButton.Name = "MinimizeButton"
-    MinimizeButton.Size = UDim2.new(0, 30, 0, 30)
-    MinimizeButton.Position = UDim2.new(1, -60, 0, 0)
-    MinimizeButton.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
-    MinimizeButton.BorderSizePixel = 0
-    MinimizeButton.Text = "-"
-    MinimizeButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-    MinimizeButton.TextSize = 20
-    MinimizeButton.Font = Enum.Font.SourceSansBold
-    MinimizeButton.Parent = TopBar
 
     -- Close Button
     local CloseButton = Instance.new("TextButton")
@@ -98,96 +103,61 @@ function UILibrary.new(title)
     Shadow.ImageTransparency = 0.5
     Shadow.Parent = MainFrame
 
-    -- Variables for UI state
-    local Minimized = false
-    local Hidden = false
-    local OriginalSize = MainFrame.Size
-    local MinimizedSize = UDim2.new(0, 400, 0, 30)
+    -- Toggle button hover effect
+    ToggleButton.MouseEnter:Connect(function()
+        TweenService:Create(ToggleButton, TweenInfo.new(0.3), {BackgroundColor3 = Color3.fromRGB(60, 60, 60)}):Play()
+    end)
 
-    -- Minimize/Maximize Animation
-    MinimizeButton.MouseButton1Click:Connect(function()
-        Minimized = not Minimized
-        
-        local targetSize = Minimized and MinimizedSize or OriginalSize
-        local tweenInfo = TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-        
-        local sizeTween = TweenService:Create(MainFrame, tweenInfo, {Size = targetSize})
-        sizeTween:Play()
-        
-        MinimizeButton.Text = Minimized and "+" or "-"
+    ToggleButton.MouseLeave:Connect(function()
+        TweenService:Create(ToggleButton, TweenInfo.new(0.3), {BackgroundColor3 = Color3.fromRGB(40, 40, 40)}):Play()
     end)
 
     -- Close Button Functionality
     CloseButton.MouseButton1Click:Connect(function()
-        ScreenGUI:Destroy()
-    end)
-
-    -- Toggle UI Visibility with Right Control
-    UserInputService.InputBegan:Connect(function(input, gameProcessed)
-        if input.KeyCode == Enum.KeyCode.RightControl then
-            Hidden = not Hidden
-            
-            local transparency = Hidden and 1 or 0
-            local tweenInfo = TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-            
-            local transparencyTween = TweenService:Create(MainFrame, tweenInfo, {BackgroundTransparency = transparency})
-            local shadowTween = TweenService:Create(Shadow, tweenInfo, {ImageTransparency = Hidden and 1 or 0.5})
-            
-            transparencyTween:Play()
-            shadowTween:Play()
-            
-            -- Make all children transparent/visible
-            for _, child in ipairs(MainFrame:GetDescendants()) do
-                if child:IsA("Frame") or child:IsA("TextButton") or child:IsA("TextLabel") then
-                    TweenService:Create(child, tweenInfo, {BackgroundTransparency = transparency}):Play()
-                    if child:IsA("TextButton") or child:IsA("TextLabel") then
-                        TweenService:Create(child, tweenInfo, {TextTransparency = transparency}):Play()
-                    end
-                end
-            end
-        end
-    end)
-
-    -- Methods
-    function gui.Hide()
-        Hidden = true
         MainFrame.Visible = false
-    end
+        ToggleButton.Visible = true -- Show toggle button when UI is closed
+    end)
 
-    function gui.Show()
-        Hidden = false
+    -- Toggle Button Functionality
+    ToggleButton.MouseButton1Click:Connect(function()
         MainFrame.Visible = true
-    end
+        ToggleButton.Visible = false -- Hide toggle button when UI is shown
+    end)
 
-    function gui.Toggle()
-        if Hidden then
-            gui.Show()
-        else
-            gui.Hide()
+    -- Make toggle button draggable
+    local dragging = false
+    local dragInput
+    local dragStart
+    local startPos
+
+    ToggleButton.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            dragging = true
+            dragStart = input.Position
+            startPos = ToggleButton.Position
         end
-    end
+    end)
 
-    function gui.Minimize()
-        if not Minimized then
-            Minimized = true
-            local tweenInfo = TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-            local sizeTween = TweenService:Create(MainFrame, tweenInfo, {Size = MinimizedSize})
-            sizeTween:Play()
-            MinimizeButton.Text = "+"
+    UserInputService.InputChanged:Connect(function(input)
+        if input == dragInput and dragging then
+            local delta = input.Position - dragStart
+            ToggleButton.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
         end
-    end
+    end)
 
-    function gui.Maximize()
-        if Minimized then
-            Minimized = false
-            local tweenInfo = TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-            local sizeTween = TweenService:Create(MainFrame, tweenInfo, {Size = OriginalSize})
-            sizeTween:Play()
-            MinimizeButton.Text = "-"
+    UserInputService.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            dragging = false
         end
-    end
+    end)
 
-    return gui
+    ToggleButton.InputChanged:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseMovement then
+            dragInput = input
+        end
+    end)
+
+    return MainFrame
 end
 
 return UILibrary
