@@ -35,64 +35,35 @@ function UILibrary.new(title, toggleConfig)
     ToggleButton.Text = "ON"
     ToggleButton.TextColor3 = toggleColors.Text
     ToggleButton.TextSize = 14
-    ToggleButton.Font = Enum.Font.GothamBold
+    ToggleButton.Font = Enum.Font.SourceSansBold
     ToggleButton.Parent = ScreenGUI
     ToggleButton.AutoButtonColor = false
-    ToggleButton.ZIndex = 9999
 
     -- Add corner radius to toggle button
     local ToggleCorner = Instance.new("UICorner")
-    ToggleCorner.CornerRadius = UDim.new(0, 8)
+    ToggleCorner.CornerRadius = UDim.new(0, 5)
     ToggleCorner.Parent = ToggleButton
-
-    -- Add toggle button shadow
-    local ToggleShadow = Instance.new("ImageLabel")
-    ToggleShadow.Name = "Shadow"
-    ToggleShadow.AnchorPoint = Vector2.new(0.5, 0.5)
-    ToggleShadow.BackgroundTransparency = 1
-    ToggleShadow.Position = UDim2.new(0.5, 0, 0.5, 0)
-    ToggleShadow.Size = UDim2.new(1, 24, 1, 24)
-    ToggleShadow.ZIndex = 9998
-    ToggleShadow.Image = "rbxassetid://6015897843"
-    ToggleShadow.ImageColor3 = Color3.new(0, 0, 0)
-    ToggleShadow.ImageTransparency = 0.5
-    ToggleShadow.Parent = ToggleButton
     
     -- Main Frame
     local MainFrame = Instance.new("Frame")
     MainFrame.Name = "MainFrame"
     MainFrame.Size = UDim2.new(0, 400, 0, 300)
     MainFrame.Position = UDim2.new(0.5, -200, 0.5, -150)
-    MainFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+    MainFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
     MainFrame.BorderSizePixel = 0
     MainFrame.Active = true
     MainFrame.Draggable = true
     MainFrame.Parent = ScreenGUI
-    MainFrame.ClipsDescendants = true -- For smooth animation
 
-    -- Add blur effect
-    local Blur = Instance.new("BlurEffect")
-    Blur.Size = 0
-    Blur.Parent = game:GetService("Lighting")
-
-    -- Top Bar with gradient
+    -- Top Bar
     local TopBar = Instance.new("Frame")
     TopBar.Name = "TopBar"
-    TopBar.Size = UDim2.new(1, 0, 0, 35)
-    TopBar.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+    TopBar.Size = UDim2.new(1, 0, 0, 30)
+    TopBar.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
     TopBar.BorderSizePixel = 0
     TopBar.Parent = MainFrame
 
-    -- Top Bar Gradient
-    local TopBarGradient = Instance.new("UIGradient")
-    TopBarGradient.Color = ColorSequence.new({
-        ColorSequenceKeypoint.new(0, Color3.fromRGB(35, 35, 35)),
-        ColorSequenceKeypoint.new(1, Color3.fromRGB(25, 25, 25))
-    })
-    TopBarGradient.Rotation = 90
-    TopBarGradient.Parent = TopBar
-
-    -- Title with shadow effect
+    -- Title
     local TitleLabel = Instance.new("TextLabel")
     TitleLabel.Name = "Title"
     TitleLabel.Size = UDim2.new(1, -20, 1, 0)
@@ -100,30 +71,22 @@ function UILibrary.new(title, toggleConfig)
     TitleLabel.BackgroundTransparency = 1
     TitleLabel.Text = title
     TitleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-    TitleLabel.TextSize = 18
-    TitleLabel.Font = Enum.Font.GothamBold
+    TitleLabel.TextSize = 16
+    TitleLabel.Font = Enum.Font.SourceSansBold
     TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
     TitleLabel.Parent = TopBar
-
-    -- Add text shadow
-    local TitleShadow = TitleLabel:Clone()
-    TitleShadow.Position = UDim2.new(0, 11, 0, 1)
-    TitleShadow.TextColor3 = Color3.fromRGB(0, 0, 0)
-    TitleShadow.TextTransparency = 0.8
-    TitleShadow.ZIndex = 0
-    TitleShadow.Parent = TopBar
     
     -- Add Corner Radius
     local UICorner = Instance.new("UICorner")
-    UICorner.CornerRadius = UDim.new(0, 8)
+    UICorner.CornerRadius = UDim.new(0, 5)
     UICorner.Parent = MainFrame
     
     -- Make corners smooth for TopBar
     local TopBarCorner = Instance.new("UICorner")
-    TopBarCorner.CornerRadius = UDim.new(0, 8)
+    TopBarCorner.CornerRadius = UDim.new(0, 5)
     TopBarCorner.Parent = TopBar
     
-    -- Add main frame shadow
+    -- Add shadow effect
     local Shadow = Instance.new("ImageLabel")
     Shadow.Name = "Shadow"
     Shadow.AnchorPoint = Vector2.new(0.5, 0.5)
@@ -136,14 +99,6 @@ function UILibrary.new(title, toggleConfig)
     Shadow.ImageTransparency = 0.5
     Shadow.Parent = MainFrame
 
-    -- Content Container
-    local ContentContainer = Instance.new("Frame")
-    ContentContainer.Name = "ContentContainer"
-    ContentContainer.Size = UDim2.new(1, -20, 1, -45)
-    ContentContainer.Position = UDim2.new(0, 10, 0, 40)
-    ContentContainer.BackgroundTransparency = 1
-    ContentContainer.Parent = MainFrame
-
     -- Toggle button hover effect
     ToggleButton.MouseEnter:Connect(function()
         TweenService:Create(ToggleButton, TweenInfo.new(0.3), {BackgroundColor3 = toggleColors.BackgroundHover}):Play()
@@ -153,52 +108,12 @@ function UILibrary.new(title, toggleConfig)
         TweenService:Create(ToggleButton, TweenInfo.new(0.3), {BackgroundColor3 = toggleColors.Background}):Play()
     end)
 
-    -- Animation functions
-    local function showUI()
-        MainFrame.Size = UDim2.new(0, 0, 0, 0)
-        MainFrame.Position = UDim2.new(0.5, 0, 0.5, 0)
-        MainFrame.Visible = true
-        
-        local tweenInfo = TweenInfo.new(0.5, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
-        local sizeTween = TweenService:Create(MainFrame, tweenInfo, {
-            Size = UDim2.new(0, 400, 0, 300),
-            Position = UDim2.new(0.5, -200, 0.5, -150)
-        })
-        
-        local blurTween = TweenService:Create(Blur, TweenInfo.new(0.5), {Size = 10})
-        
-        sizeTween:Play()
-        blurTween:Play()
-    end
-
-    local function hideUI()
-        local tweenInfo = TweenInfo.new(0.5, Enum.EasingStyle.Back, Enum.EasingDirection.In)
-        local sizeTween = TweenService:Create(MainFrame, tweenInfo, {
-            Size = UDim2.new(0, 0, 0, 0),
-            Position = UDim2.new(0.5, 0, 0.5, 0)
-        })
-        
-        local blurTween = TweenService:Create(Blur, TweenInfo.new(0.5), {Size = 0})
-        
-        sizeTween.Completed:Connect(function()
-            MainFrame.Visible = false
-        end)
-        
-        sizeTween:Play()
-        blurTween:Play()
-    end
-
     -- Toggle Button Functionality
     local isUIVisible = true
     ToggleButton.MouseButton1Click:Connect(function()
         isUIVisible = not isUIVisible
-        if isUIVisible then
-            showUI()
-            ToggleButton.Text = "OFF"
-        else
-            hideUI()
-            ToggleButton.Text = "ON"
-        end
+        MainFrame.Visible = isUIVisible
+        ToggleButton.Text = isUIVisible and "OFF" or "ON"
     end)
 
     -- Make toggle button draggable
@@ -246,7 +161,7 @@ function UILibrary.new(title, toggleConfig)
         ToggleButton.TextColor3 = toggleColors.Text
     end
 
-    return gui, ContentContainer
+    return gui
 end
 
 return UILibrary
