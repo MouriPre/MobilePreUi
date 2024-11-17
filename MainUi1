@@ -26,18 +26,16 @@ function UILibrary.new(title, toggleConfig)
     ScreenGUI.ResetOnSpawn = false
     
     -- Toggle Button (Always visible)
-    local ToggleButton = Instance.new("TextButton")
+    local ToggleButton = Instance.new("ImageButton")
     ToggleButton.Name = "ToggleButton"
     ToggleButton.Size = toggleColors.Size
     ToggleButton.Position = toggleColors.Position
-    ToggleButton.BackgroundColor3 = toggleColors.Background
+    ToggleButton.BackgroundTransparency = 1
     ToggleButton.BorderSizePixel = 0
-    ToggleButton.Text = "ON"
-    ToggleButton.TextColor3 = toggleColors.Text
-    ToggleButton.TextSize = 14
-    ToggleButton.Font = Enum.Font.SourceSansBold
+    ToggleButton.Image = "rbxassetid://104809137040953"
     ToggleButton.Parent = ScreenGUI
     ToggleButton.AutoButtonColor = false
+    ToggleButton.ZIndex = 9999
 
     -- Add corner radius to toggle button
     local ToggleCorner = Instance.new("UICorner")
@@ -101,19 +99,35 @@ function UILibrary.new(title, toggleConfig)
 
     -- Toggle button hover effect
     ToggleButton.MouseEnter:Connect(function()
-        TweenService:Create(ToggleButton, TweenInfo.new(0.3), {BackgroundColor3 = toggleColors.BackgroundHover}):Play()
+        TweenService:Create(ToggleButton, TweenInfo.new(0.3), {ImageTransparency = 0.2}):Play()
     end)
 
     ToggleButton.MouseLeave:Connect(function()
-        TweenService:Create(ToggleButton, TweenInfo.new(0.3), {BackgroundColor3 = toggleColors.Background}):Play()
+        TweenService:Create(ToggleButton, TweenInfo.new(0.3), {ImageTransparency = 0}):Play()
     end)
 
-    -- Toggle Button Functionality
+    -- Toggle Button Functionality with animations
     local isUIVisible = true
     ToggleButton.MouseButton1Click:Connect(function()
         isUIVisible = not isUIVisible
-        MainFrame.Visible = isUIVisible
-        ToggleButton.Text = isUIVisible and "OFF" or "ON"
+        
+        if isUIVisible then
+            -- Open animation
+            MainFrame.Size = UDim2.new(0, 0, 0, 300)
+            MainFrame.Visible = true
+            TweenService:Create(MainFrame, TweenInfo.new(0.3, Enum.EasingStyle.Back), {
+                Size = UDim2.new(0, 400, 0, 300)
+            }):Play()
+            TweenService:Create(ToggleButton, TweenInfo.new(0.3), {Rotation = 0}):Play()
+        else
+            -- Close animation
+            TweenService:Create(MainFrame, TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.In), {
+                Size = UDim2.new(0, 0, 0, 300)
+            }):Play()
+            TweenService:Create(ToggleButton, TweenInfo.new(0.3), {Rotation = 180}):Play()
+            wait(0.3)
+            MainFrame.Visible = false
+        end
     end)
 
     -- Make toggle button draggable
