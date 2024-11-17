@@ -45,7 +45,7 @@ function UILibrary.new(title, toggleConfig)
     -- Main Frame
     local MainFrame = Instance.new("Frame")
     MainFrame.Name = "MainFrame"
-    MainFrame.Size = UDim2.new(0, 400, 0, 300)
+    MainFrame.Size = UDim2.new(0, 800, 0, 300)
     MainFrame.Position = UDim2.new(0.5, -200, 0.5, -150)
     MainFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
     MainFrame.BorderSizePixel = 0
