@@ -1,7 +1,7 @@
+-- ===== EXPLOIT UI LIBRARY - CHẠY TRÊN EXPLOIT =====
 local UILibrary = {}
 UILibrary.__index = UILibrary
 
--- Phát hiện device
 local UserInputService = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
 local Players = game:GetService("Players")
@@ -41,7 +41,7 @@ local SCREEN_CONFIG = {
 
 local CONFIG = IsMobile and SCREEN_CONFIG.MOBILE or SCREEN_CONFIG.PC
 
--- Tạo panel chính với hỗ trợ Mobile & PC
+-- Tạo panel chính
 function UILibrary.CreatePanel(title, customSize)
     local screenSize = customSize or UDim2.new(0, CONFIG.Width, 0, CONFIG.Height)
     
@@ -49,19 +49,13 @@ function UILibrary.CreatePanel(title, customSize)
     panel.Name = "UIPanel"
     panel.ResetOnSpawn = false
     panel.Enabled = true
-    
-    -- Điều chỉnh cho mobile
-    if IsMobile then
-        panel.Parent = game.Players.LocalPlayer:WaitForChild("PlayerGui")
-    else
-        panel.Parent = game.Players.LocalPlayer:WaitForChild("PlayerGui")
-    end
+    panel.Parent = Players.LocalPlayer:WaitForChild("PlayerGui")
     
     -- Background
     local background = Instance.new("Frame")
     background.Name = "Background"
     background.Size = screenSize
-    background.Position = IsMobile and UDim2.new(0.5, -screenSize.X.Offset/2, 0.5, -screenSize.Y.Offset/2) or UDim2.new(0.5, -200, 0.5, -250)
+    background.Position = UDim2.new(0.5, -screenSize.X.Offset/2, 0.5, -screenSize.Y.Offset/2)
     background.BackgroundColor3 = DEFAULT_COLORS.Secondary
     background.BorderColor3 = DEFAULT_COLORS.Border
     background.BorderSizePixel = 2
@@ -79,11 +73,13 @@ function UILibrary.CreatePanel(title, customSize)
     titleLabel.Parent = background
     
     -- Container
-    local container = Instance.new("Frame")
+    local container = Instance.new("ScrollingFrame")
     container.Name = "Container"
     container.Size = UDim2.new(1, -CONFIG.Padding*2, 1, -(IsMobile and 60 or 50))
     container.Position = UDim2.new(0, CONFIG.Padding, 0, IsMobile and 50 or 40)
     container.BackgroundTransparency = 1
+    container.ScrollBarThickness = 8
+    container.CanvasSize = UDim2.new(0, 0, 0, 0)
     container.Parent = background
     
     -- UIListLayout
@@ -91,7 +87,12 @@ function UILibrary.CreatePanel(title, customSize)
     listLayout.Padding = UDim.new(0, CONFIG.Padding)
     listLayout.Parent = container
     
-    -- Drag functionality cho PC
+    -- Auto update canvas size
+    listLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+        container.CanvasSize = UDim2.new(0, 0, 0, listLayout.AbsoluteContentSize.Y)
+    end)
+    
+    -- Drag functionality
     if IS_PC then
         local dragging = false
         local dragInput
@@ -124,7 +125,7 @@ function UILibrary.CreatePanel(title, customSize)
     return background, container
 end
 
--- Tạo nút bấm với touch support
+-- Tạo nút bấm
 function UILibrary.CreateButton(parent, text, callback)
     local button = Instance.new("TextButton")
     button.Name = "Button"
@@ -140,7 +141,6 @@ function UILibrary.CreateButton(parent, text, callback)
     
     local originalColor = button.BackgroundColor3
     
-    -- Touch & Mouse support
     local function onPress()
         button.BackgroundColor3 = Color3.fromRGB(0, 100, 180)
     end
@@ -152,23 +152,18 @@ function UILibrary.CreateButton(parent, text, callback)
         end
     end
     
-    -- Mouse events (PC)
     button.MouseButton1Down:Connect(onPress)
     button.MouseButton1Up:Connect(onRelease)
-    
-    -- Touch events (Mobile)
     button.TouchTap:Connect(function()
         onPress()
         task.wait(0.1)
         onRelease()
     end)
     
-    -- Hover effect untuk PC
     if IS_PC then
         button.MouseEnter:Connect(function()
             button.BackgroundColor3 = Color3.fromRGB(0, 140, 230)
         end)
-        
         button.MouseLeave:Connect(function()
             button.BackgroundColor3 = originalColor
         end)
@@ -189,11 +184,10 @@ function UILibrary.CreateLabel(parent, text)
     label.Text = text or "Label"
     label.TextWrapped = true
     label.Parent = parent
-    
     return label
 end
 
--- Tạo TextBox với keyboard
+-- Tạo TextBox
 function UILibrary.CreateTextBox(parent, placeholder)
     local textBox = Instance.new("TextBox")
     textBox.Name = "TextBox"
@@ -208,7 +202,6 @@ function UILibrary.CreateTextBox(parent, placeholder)
     textBox.BorderSizePixel = 1
     textBox.ClearTextOnFocus = false
     textBox.Parent = parent
-    
     return textBox
 end
 
@@ -246,9 +239,7 @@ function UILibrary.CreateCheckbox(parent, labelText, callback)
     local function toggle()
         isChecked = not isChecked
         checkbox.BackgroundColor3 = isChecked and DEFAULT_COLORS.Primary or Color3.fromRGB(100, 100, 100)
-        if callback then
-            callback(isChecked)
-        end
+        if callback then callback(isChecked) end
     end
     
     checkbox.MouseButton1Click:Connect(toggle)
@@ -301,133 +292,42 @@ function UILibrary.CreateSlider(parent, minValue, maxValue, defaultValue, callba
         value = minValue + (maxValue - minValue) * percent
         thumb.Position = UDim2.new(0, (size - 20) * percent, 0.3, -7)
         valueLabel.Text = string.format("%.0f", value)
-        if callback then
-            callback(value)
-        end
+        if callback then callback(value) end
     end
     
-    -- Mouse events (PC)
-    thumb.MouseButton1Down:Connect(function()
-        isDragging = true
-    end)
-    
+    thumb.MouseButton1Down:Connect(function() isDragging = true end)
     UserInputService.InputEnded:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 then
-            isDragging = false
-        end
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then isDragging = false end
     end)
-    
     UserInputService.InputChanged:Connect(function(input)
         if isDragging and input.UserInputType == Enum.UserInputType.MouseMovement then
             updateSlider(input.Position.X)
         end
     end)
     
-    -- Touch events (Mobile)
-    thumb.TouchBegan:Connect(function()
-        isDragging = true
-    end)
-    
-    thumb.TouchEnded:Connect(function()
-        isDragging = false
-    end)
-    
+    thumb.TouchBegan:Connect(function() isDragging = true end)
+    thumb.TouchEnded:Connect(function() isDragging = false end)
     thumb.TouchMoved:Connect(function(touch)
-        if isDragging then
-            updateSlider(touch.Position.X)
-        end
+        if isDragging then updateSlider(touch.Position.X) end
     end)
     
-    -- Set initial value
     valueLabel.Text = string.format("%.0f", value)
-    
     return container
-end
-
--- Tạo Dropdown
-function UILibrary.CreateDropdown(parent, options, callback)
-    local container = Instance.new("Frame")
-    container.Name = "Dropdown"
-    container.Size = UDim2.new(1, 0, 0, CONFIG.ButtonHeight)
-    container.BackgroundTransparency = 1
-    container.Parent = parent
-    
-    local button = Instance.new("TextButton")
-    button.Name = "DropdownButton"
-    button.Size = UDim2.new(1, 0, 0, CONFIG.ButtonHeight)
-    button.BackgroundColor3 = DEFAULT_COLORS.Primary
-    button.TextColor3 = DEFAULT_COLORS.Text
-    button.TextSize = CONFIG.FontSize
-    button.Font = Enum.Font.Gotham
-    button.Text = options[1] or "Select..."
-    button.BorderSizePixel = 0
-    button.AutoButtonColor = false
-    button.Parent = container
-    
-    local isOpen = false
-    local listFrame
-    
-    local function toggleDropdown()
-        isOpen = not isOpen
-        if isOpen then
-            listFrame = Instance.new("Frame")
-            listFrame.Name = "DropdownList"
-            listFrame.Size = UDim2.new(1, 0, 0, (#options * CONFIG.ButtonHeight) + CONFIG.Padding)
-            listFrame.Position = UDim2.new(0, 0, 0, CONFIG.ButtonHeight + CONFIG.Padding)
-            listFrame.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
-            listFrame.BorderColor3 = DEFAULT_COLORS.Border
-            listFrame.BorderSizePixel = 1
-            listFrame.Parent = container
-            
-            for i, option in ipairs(options) do
-                local optionButton = Instance.new("TextButton")
-                optionButton.Name = "Option_" .. i
-                optionButton.Size = UDim2.new(1, 0, 0, CONFIG.ButtonHeight)
-                optionButton.Position = UDim2.new(0, 0, 0, (i-1) * CONFIG.ButtonHeight)
-                optionButton.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
-                optionButton.TextColor3 = DEFAULT_COLORS.Text
-                optionButton.TextSize = CONFIG.FontSize
-                optionButton.Font = Enum.Font.Gotham
-                optionButton.Text = option
-                optionButton.BorderSizePixel = 0
-                optionButton.AutoButtonColor = false
-                optionButton.Parent = listFrame
-                
-                local function selectOption()
-                    button.Text = option
-                    if callback then
-                        callback(option)
-                    end
-                    isOpen = false
-                    listFrame:Destroy()
-                    listFrame = nil
-                end
-                
-                optionButton.MouseButton1Click:Connect(selectOption)
-                optionButton.TouchTap:Connect(selectOption)
-            end
-        else
-            if listFrame then
-                listFrame:Destroy()
-                listFrame = nil
-            end
-        end
-    end
-    
-    button.MouseButton1Click:Connect(toggleDropdown)
-    button.TouchTap:Connect(toggleDropdown)
-    
-    return container
-end
-
--- Thông tin device
-function UILibrary.GetDeviceInfo()
-    return {
-        IsMobile = IsMobile,
-        IsPC = IS_PC,
-        ScreenWidth = CONFIG.Width,
-        ScreenHeight = CONFIG.Height
-    }
 end
 
 return UILibrary
+
+-- ===== HƯỚNG DÙNG EXPLOIT =====
+-- local UILib = loadstring(game:HttpGet("https://raw.githubusercontent.com/MouriPre/MobilePreUi/refs/heads/main/MainUi2"))()
+-- 
+-- local panel, container = UILib.CreatePanel("Ứng dụng của tôi", UDim2.new(0, 350, 0, 500))
+-- 
+-- UILib.CreateLabel(container, "Chào mừng!")
+-- UILib.CreateButton(container, "Nhấn tôi", function()
+--     print("Nút được nhấn!")
+-- end)
+-- UILib.CreateTextBox(container, "Nhập tên...")
+-- UILib.CreateCheckbox(container, "Bật tính năng")
+-- UILib.CreateSlider(container, 0, 100, 50, function(value)
+--     print("Giá trị:", value)
+-- end)
