@@ -1,333 +1,4312 @@
--- ===== EXPLOIT UI LIBRARY - CHẠY TRÊN EXPLOIT =====
-local UILibrary = {}
-UILibrary.__index = UILibrary
+local ReGui = loadstring(game:HttpGet('https://raw.githubusercontent.com/depthso/Dear-ReGui/refs/heads/main/ReGui.lua'))()
 
-local UserInputService = game:GetService("UserInputService")
-local RunService = game:GetService("RunService")
+-- ======== THEMES ========
+ReGui:DefineTheme("Pink Theme", {
+	Text = Color3.fromRGB(255, 255, 255),
+	WindowBg = Color3.fromRGB(15, 15, 15),
+	TitleBarBg = Color3.fromRGB(15, 15, 15),
+	TitleBarBgActive = Color3.fromRGB(15, 15, 15),
+	Border = Color3.fromRGB(255, 255, 255),
+	ResizeGrab = Color3.fromRGB(255, 255, 255),
+})
+
+-- ======== CUSTOM ELEMENTS ========
+ReGui:DefineElement("PurpleText", {
+	Base = {
+		IsBigText = true
+	},
+	Create = function(self, Config)
+		local IsBigText = Config.IsBigText
+		local Label = Instance.new("TextLabel")
+		Label.TextSize = IsBigText and 30 or 14
+		return Label
+	end,
+})
+
+ReGui:DefineElement("ProgressBar", {
+	Base = {
+		Progress = true,
+		ReadOnly = true,
+		MinValue = 0,
+		MaxValue = 100,
+		Format = "% i%%"
+	},
+	Create = function(self, Config)
+		function Config:SetPercentage(Value: number)
+			Config:SetValue(Value)
+		end
+		return self:SliderBase(Config)
+	end,
+})
+
+-- ======== GLOBAL FLAGS ========
+ReGui:DefineGlobalFlag({
+	Properties = {"Hidden"},
+	Callback = function(Data, Object, Value)
+		Object.Visible = not Value
+	end
+})
+
+-- ======== WINDOW 1 (MAIN) ========
+local Window = ReGui:TabsWindow({
+	Title = "Celestial Universe Imgui",
+	Theme = "Pink Theme",
+	Size = UDim2.fromOffset(400, 350),
+	Position = UDim2.fromOffset(315, 10)
+})
+
+-- ======== TABS WINDOW 1 ========
+--local Names = {"Esp", "Aimbot", "Player"}
+
+--for _, Name in next, Names do
+	--local Tab = Window:CreateTab({Name = Name})
+	
+	--Tab:Label({
+		--Text = `This is the {Name} tab!`
+	--})
+	
+	--Tab:Button({
+		--Text = "Print",
+		--Callback = function()
+			--print("Hello from " .. Name)
+		--end
+	--})
+--end
+
+-- ======== ELEMENTS TAB ========
+local DemoTab = Window:CreateTab({Name = "Esp"})
+local EspMTab = Window:CreateTab({Name = "Esp Model"})
+local AimTab = Window:CreateTab({Name = "Aimbot"})
+local AimMTab = Window:CreateTab({Name = "Aimbot Model"})
+local SetTab = Window:CreateTab({Name = "Setting"})
+
 local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local Workspace = game:GetService("Workspace")
+local Camera = Workspace.CurrentCamera
 
-local IsMobile = UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled
-local IS_PC = not IsMobile
+local LocalPlayer = Players.LocalPlayer
+local Tracers = {}
+local DrawingPool = {}
+local PoolSize = 0
+local MaxPoolSize = 50
+local RenderConnection = nil
 
--- Màu mặc định
-local DEFAULT_COLORS = {
-    Primary = Color3.fromRGB(0, 120, 215),
-    Secondary = Color3.fromRGB(45, 45, 48),
-    Text = Color3.fromRGB(255, 255, 255),
-    Border = Color3.fromRGB(100, 100, 100)
+local Config = {
+    TracerColor = Color3.fromRGB(255, 255, 255),
+    TracerThickness = 2,
+    TracerTransparency = 0.8,
+    LerpSpeed = 1,
+    Enabled = false,
+    UseAsync = true,
+    TracerPosition = "Center",
+    TeamCheck = false,
+    TeamColor = false
 }
 
--- Cấu hình responsive
-local SCREEN_CONFIG = {
-    MOBILE = {
-        Width = 550,
-        Height = 360,
-        ButtonHeight = 45,
-        LabelHeight = 35,
-        TextBoxHeight = 40,
-        Padding = 12,
-        FontSize = 14
+local TeamCheckModes = {
+    "Auto",
+    "Standard Team",
+    "TeamColor",
+    "leaderstats.Team",
+    "Data.Team",
+    "Player.Team Value",
+    "HUD TeamName",
+    "Disabled"
+}
+
+local function GetLineFromPool()
+    if PoolSize > 0 then
+        local line = DrawingPool[PoolSize]
+        DrawingPool[PoolSize] = nil
+        PoolSize = PoolSize - 1
+        return line
+    else
+        local line = Drawing.new("Line")
+        line.Color = Config.TracerColor
+        line.Thickness = Config.TracerThickness
+        line.Transparency = Config.TracerTransparency
+        return line
+    end
+end
+
+local function ReturnLineToPool(line)
+    if PoolSize < MaxPoolSize then
+        line.Visible = false
+        PoolSize = PoolSize + 1
+        DrawingPool[PoolSize] = line
+    else
+        line:Remove()
+    end
+end
+
+local function LerpVector2(a, b, t)
+    return Vector2.new(
+        a.X + (b.X - a.X) * t,
+        a.Y + (b.Y - a.Y) * t
+    )
+end
+
+local function GetPlayerTeam(player)
+    if not Config.TeamCheck or not player then return nil end
+    
+    local team = player.Team
+    if team then return tostring(team.Name) end
+    
+    local leaderstats = player:FindFirstChild("leaderstats")
+    if leaderstats then
+        local teamValue = leaderstats:FindFirstChild("Team")
+        if teamValue then return tostring(teamValue.Value) end
+    end
+    
+    local data = player:FindFirstChild("Data")
+    if data then
+        local teamValue = data:FindFirstChild("Team")
+        if teamValue then return tostring(teamValue.Value) end
+    end
+    
+    local team = player:FindFirstChild("Team")
+    if team then
+        if team:IsA("StringValue") or team:IsA("IntValue") then
+            return tostring(team.Value)
+        end
+    end
+    
+    local playerGui = player:FindFirstChild("PlayerGui")
+    if playerGui then
+        local hud = playerGui:FindFirstChild("HUD")
+        if hud then
+            local teamName = hud:FindFirstChild("TeamName")
+            if teamName then return tostring(teamName.Text) end
+        end
+    end
+    
+    return nil
+end
+
+local function GetLocalPlayerTeam()
+    if not Config.TeamCheck or not LocalPlayer then return nil end
+    
+    local team = LocalPlayer.Team
+    if team then return tostring(team.Name) end
+    
+    local leaderstats = LocalPlayer:FindFirstChild("leaderstats")
+    if leaderstats then
+        local teamValue = leaderstats:FindFirstChild("Team")
+        if teamValue then return tostring(teamValue.Value) end
+    end
+    
+    local data = LocalPlayer:FindFirstChild("Data")
+    if data then
+        local teamValue = data:FindFirstChild("Team")
+        if teamValue then return tostring(teamValue.Value) end
+    end
+    
+    local team = LocalPlayer:FindFirstChild("Team")
+    if team then
+        if team:IsA("StringValue") or team:IsA("IntValue") then
+            return tostring(team.Value)
+        end
+    end
+    
+    local playerGui = LocalPlayer:FindFirstChild("PlayerGui")
+    if playerGui then
+        local hud = playerGui:FindFirstChild("HUD")
+        if hud then
+            local teamName = hud:FindFirstChild("TeamName")
+            if teamName then return tostring(teamName.Text) end
+        end
+    end
+    
+    return nil
+end
+
+local function RemoveTracer(player)
+    if Tracers[player] then
+        local data = Tracers[player]
+        ReturnLineToPool(data.line)
+        Tracers[player] = nil
+    end
+end
+
+local function HideAllTracers()
+    for player, data in pairs(Tracers) do
+        if data and data.line then
+            data.line.Visible = false
+        end
+    end
+end
+
+local function ShouldDrawTracer(player)
+    if player == LocalPlayer then
+        return false
+    end
+    
+    if not Config.TeamCheck then
+        return true
+    end
+    
+    local playerTeam = GetPlayerTeam(player)
+    local localTeam = GetLocalPlayerTeam()
+    
+    if not playerTeam or not localTeam then
+        return true
+    end
+    
+    if playerTeam == localTeam then
+        return false
+    end
+    
+    return true
+end
+
+local function AddTracer(player)
+    if not ShouldDrawTracer(player) then
+        RemoveTracer(player)
+        return
+    end
+    
+    if not Tracers[player] then
+        local line = GetLineFromPool()
+        Tracers[player] = {
+            line = line,
+            lastTo = Vector2.new(0, 0),
+            targetTo = Vector2.new(0, 0)
+        }
+    end
+end
+
+local function GetTracerStartPosition()
+    local screenSize = Camera.ViewportSize
+    local x = screenSize.X / 2
+    local y
+    
+    if Config.TracerPosition == "Top" then
+        y = 0
+    elseif Config.TracerPosition == "Bottom" then
+        y = screenSize.Y
+    else
+        y = screenSize.Y / 2
+    end
+    
+    return Vector2.new(x, y)
+end
+
+local function BatchUpdateTracers()
+    if not Config.Enabled then 
+        HideAllTracers()
+        return 
+    end
+    
+    local screenSize = Camera.ViewportSize
+    local fromPosition = GetTracerStartPosition()
+    
+    local updateBatch = {} 
+    for player, data in pairs(Tracers) do
+        if not player or not player.Parent then
+            table.insert(updateBatch, {action = "remove", player = player})
+            continue
+        end
+        if not ShouldDrawTracer(player) then
+            table.insert(updateBatch, {action = "remove", player = player})
+            continue
+        end
+        
+        local character = player.Character
+        if not character then
+            data.line.Visible = false
+            continue
+        end
+        
+        local humanoidRootPart = character:FindFirstChild("HumanoidRootPart")
+        local humanoid = character:FindFirstChild("Humanoid")
+        
+        if not humanoidRootPart or not humanoid or humanoid.Health <= 0 then
+            data.line.Visible = false
+            continue
+        end
+        
+        local position, onScreen = Camera:WorldToViewportPoint(humanoidRootPart.Position)
+        
+        if position.Z < 0 then
+            data.line.Visible = false
+            continue
+        end
+        
+        table.insert(updateBatch, {
+            action = "update",
+            player = player,
+            data = data,
+            targetTo = Vector2.new(position.X, position.Y)
+        })
+    end
+    
+    if Config.UseAsync and #updateBatch > 5 then
+        task.spawn(function()
+            for _, update in ipairs(updateBatch) do
+                if update.action == "remove" then
+                    RemoveTracer(update.player)
+                elseif update.action == "update" then
+                    local player = update.player
+                    local data = update.data
+                    
+                    data.targetTo = update.targetTo
+                    data.lastTo = LerpVector2(data.lastTo, data.targetTo, Config.LerpSpeed)
+                    
+                    data.line.From = fromPosition
+                    data.line.To = data.lastTo
+                    data.line.Visible = true
+                    if Config.TeamColor and player.Team then
+                        data.line.Color = player.Team.TeamColor.Color
+                    else
+                        data.line.Color = Config.TracerColor
+                    end
+                    
+                    data.line.Thickness = Config.TracerThickness
+                    data.line.Transparency = Config.TracerTransparency
+                end
+            end
+        end)
+    else
+        for _, update in ipairs(updateBatch) do
+            if update.action == "remove" then
+                RemoveTracer(update.player)
+            elseif update.action == "update" then
+                local player = update.player
+                local data = update.data
+                
+                data.targetTo = update.targetTo
+                data.lastTo = LerpVector2(data.lastTo, data.targetTo, Config.LerpSpeed)
+                
+                data.line.From = fromPosition
+                data.line.To = data.lastTo
+                data.line.Visible = true
+                if Config.TeamColor and player.Team then
+                    data.line.Color = player.Team.TeamColor.Color
+                else
+                    data.line.Color = Config.TracerColor
+                end
+                
+                data.line.Thickness = Config.TracerThickness
+                data.line.Transparency = Config.TracerTransparency
+            end
+        end
+    end
+end
+
+local function OnPlayerAdded(player)
+    player.CharacterAdded:Connect(function(character)
+        AddTracer(player)
+    end)
+    
+    if player.Character then
+        AddTracer(player)
+    end
+end
+
+local function OnPlayerRemoving(player)
+    RemoveTracer(player)
+end
+
+for _, player in ipairs(Players:GetPlayers()) do
+    OnPlayerAdded(player)
+end
+
+Players.PlayerAdded:Connect(OnPlayerAdded)
+Players.PlayerRemoving:Connect(OnPlayerRemoving)
+
+if RenderConnection then
+    RenderConnection:Disconnect()
+end
+RenderConnection = RunService.RenderStepped:Connect(BatchUpdateTracers)
+
+local function Cleanup()
+    if RenderConnection then
+        RenderConnection:Disconnect()
+    end
+    for player, _ in pairs(Tracers) do
+        RemoveTracer(player)
+    end   
+    for i = 1, PoolSize do
+        if DrawingPool[i] then
+            DrawingPool[i]:Remove()
+        end
+    end
+    DrawingPool = {}
+    PoolSize = 0
+end
+
+DemoTab:Separator({Text = "Tracer"})
+
+DemoTab:Checkbox({
+	Value = false,
+	Label = "Bật Tracer",
+	Callback = function(self, Value)
+		Config.Enabled = Value
+	end
+})
+
+DemoTab:SliderColor3({
+	Value = Color3.fromRGB(255, 255, 255),
+	Label = "Màu Tracer",
+	Callback = function(self, Value)
+		Config.TracerColor = Value
+	end
+})
+
+DemoTab:Combo({
+	Label = "Vị Trí Tracer",
+	Selected = "Center",
+	Items = {"Top", "Bottom", "Center"},
+	Callback = function(self, Value)
+		Config.TracerPosition = Value
+	end
+})
+
+DemoTab:Checkbox({
+	Value = false,
+	Label = "Màu Team",
+	Callback = function(self, Value)
+		Config.TeamColor = Value
+	end
+})
+
+DemoTab:Separator({Text = "Cài Đặt Nâng Cao"})
+
+DemoTab:Checkbox({
+	Value = true,
+	Label = "Async Update",
+	Callback = function(self, Value)
+		Config.UseAsync = Value
+	end
+})
+
+DemoTab:Checkbox({
+	Value = false,
+	Label = "Kiểm Tra Team",
+	Callback = function(self, Value)
+		Config.TeamCheck = Value
+		for _, player in ipairs(Players:GetPlayers()) do
+			if player ~= LocalPlayer then
+				AddTracer(player)
+			end
+		end
+	end
+})
+
+local Players = game:GetService("Players")
+local TweenService = game:GetService("TweenService")
+local RunService = game:GetService("RunService")
+
+local LocalPlayer = Players.LocalPlayer
+
+local CONFIG = {
+    HP_BAR_WIDTH = 70,
+    HP_BAR_HEIGHT = 5,
+    HP_OFFSET = Vector3.new(0, 3, 0),
+    OUTLINE_COLOR = Color3.fromRGB(255, 255, 255),
+    HP_COLOR_START = Color3.fromRGB(0, 255, 0),
+    HP_COLOR_END = Color3.fromRGB(86, 255, 0),
+    TWEEN_TIME = 0.3,
+    TWEEN_STYLE = Enum.EasingStyle.Quad,
+    TWEEN_DIRECTION = Enum.EasingDirection.Out,
+    SIZE_FIXED = true,
+    Enabled = false,
+    TeamCheck = false,
+    UseAsync = true
+}
+
+local PlayerESPs = {}
+local ESPPool = {}
+local PoolSize = 0
+local MaxPoolSize = 30
+
+local function CreateHPBar()
+    local screenGui = Instance.new("BillboardGui")
+    screenGui.Size = UDim2.new(0, CONFIG.HP_BAR_WIDTH, 0, 30)
+    screenGui.StudsOffset = CONFIG.HP_OFFSET
+    screenGui.AlwaysOnTop = true
+    screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+    
+    if CONFIG.SIZE_FIXED then
+        screenGui.Size = UDim2.fromOffset(CONFIG.HP_BAR_WIDTH, 30)
+        screenGui.MaxDistance = math.huge
+    end
+    
+    local frameOutline = Instance.new("Frame")
+    frameOutline.Name = "FrameOutlineHp"
+    frameOutline.Parent = screenGui
+    frameOutline.BorderSizePixel = 0
+    frameOutline.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+    frameOutline.BackgroundTransparency = 1
+    frameOutline.Size = UDim2.new(0, CONFIG.HP_BAR_WIDTH, 0, CONFIG.HP_BAR_HEIGHT)
+    frameOutline.Position = UDim2.new(0.5, -CONFIG.HP_BAR_WIDTH/2, 0, 0)
+    
+    local outlineCorner = Instance.new("UICorner")
+    outlineCorner.CornerRadius = UDim.new(0, 0)
+    outlineCorner.Parent = frameOutline
+    
+    local uiStroke = Instance.new("UIStroke")
+    uiStroke.Thickness = 1
+    uiStroke.Color = CONFIG.OUTLINE_COLOR
+    uiStroke.Parent = frameOutline
+    
+    local hpBar = Instance.new("Frame")
+    hpBar.Name = "Hp"
+    hpBar.Parent = frameOutline
+    hpBar.BorderSizePixel = 0
+    hpBar.BackgroundColor3 = Color3.fromRGB(0, 255, 38)
+    hpBar.Size = UDim2.new(1, 0, 1, 0)
+    hpBar.Position = UDim2.new(0, 0, 0, 0)
+    hpBar.AnchorPoint = Vector2.new(0, 0)
+    
+    local hpCorner = Instance.new("UICorner")
+    hpCorner.CornerRadius = UDim.new(0, 0)
+    hpCorner.Parent = hpBar
+    
+    local hpGradient = Instance.new("UIGradient")
+    hpGradient.Color = ColorSequence.new{
+        ColorSequenceKeypoint.new(0.000, CONFIG.HP_COLOR_START),
+        ColorSequenceKeypoint.new(1.000, CONFIG.HP_COLOR_END)
+    }
+    hpGradient.Parent = hpBar
+    
+    local hpText = Instance.new("TextLabel")
+    hpText.Name = "HpText"
+    hpText.Parent = frameOutline
+    hpText.BackgroundTransparency = 1
+    hpText.Size = UDim2.new(1, 0, 1, 0)
+    hpText.Font = Enum.Font.GothamBold
+    hpText.TextSize = 8
+    hpText.TextColor3 = Color3.fromRGB(255, 255, 255)
+    hpText.TextStrokeTransparency = 0.5
+    hpText.Text = "100/100"
+    hpText.TextScaled = false
+    
+    return screenGui, hpBar, hpText
+end
+
+local function GetESPFromPool()
+    if PoolSize > 0 then
+        local esp = ESPPool[PoolSize]
+        ESPPool[PoolSize] = nil
+        PoolSize = PoolSize - 1
+        return esp
+    else
+        return CreateHPBar()
+    end
+end
+
+local function ReturnESPToPool(screenGui)
+    if PoolSize < MaxPoolSize then
+        screenGui.Enabled = false
+        screenGui.Parent = nil
+        screenGui.Adornee = nil
+        PoolSize = PoolSize + 1
+        ESPPool[PoolSize] = screenGui
+    else
+        screenGui:Destroy()
+    end
+end
+
+local function UpdateHPBar(hpBar, hpText, currentHP, maxHP)
+    if not hpBar or not hpBar.Parent then return end
+    
+    local hpPercent = math.clamp(currentHP / maxHP, 0, 1)
+    local tweenInfo = TweenInfo.new(
+        CONFIG.TWEEN_TIME,
+        CONFIG.TWEEN_STYLE,
+        CONFIG.TWEEN_DIRECTION
+    )
+    
+    local goal = {Size = UDim2.new(hpPercent, 0, 1, 0)}
+    local tween = TweenService:Create(hpBar, tweenInfo, goal)
+    tween:Play()
+    
+    if hpText then
+        hpText.Text = string.format("%d/%d", math.floor(currentHP), math.floor(maxHP))
+    end
+    
+    if hpPercent <= 0.3 then
+        hpBar.BackgroundColor3 = Color3.fromRGB(255, 0, 0)
+    elseif hpPercent <= 0.6 then
+        hpBar.BackgroundColor3 = Color3.fromRGB(255, 255, 0)
+    else
+        hpBar.BackgroundColor3 = Color3.fromRGB(0, 255, 38)
+    end
+end
+
+local function GetPlayerTeam(player)
+    if not CONFIG.TeamCheck or not player then return nil end
+    
+    local team = player.Team
+    if team then return tostring(team.Name) end
+    
+    local leaderstats = player:FindFirstChild("leaderstats")
+    if leaderstats then
+        local teamValue = leaderstats:FindFirstChild("Team")
+        if teamValue then return tostring(teamValue.Value) end
+    end
+    
+    local data = player:FindFirstChild("Data")
+    if data then
+        local teamValue = data:FindFirstChild("Team")
+        if teamValue then return tostring(teamValue.Value) end
+    end
+    
+    local team = player:FindFirstChild("Team")
+    if team then
+        if team:IsA("StringValue") or team:IsA("IntValue") then
+            return tostring(team.Value)
+        end
+    end
+    
+    local playerGui = player:FindFirstChild("PlayerGui")
+    if playerGui then
+        local hud = playerGui:FindFirstChild("HUD")
+        if hud then
+            local teamName = hud:FindFirstChild("TeamName")
+            if teamName then return tostring(teamName.Text) end
+        end
+    end
+    
+    return nil
+end
+
+local function GetLocalPlayerTeam()
+    if not CONFIG.TeamCheck or not LocalPlayer then return nil end
+    
+    local team = LocalPlayer.Team
+    if team then return tostring(team.Name) end
+    
+    local leaderstats = LocalPlayer:FindFirstChild("leaderstats")
+    if leaderstats then
+        local teamValue = leaderstats:FindFirstChild("Team")
+        if teamValue then return tostring(teamValue.Value) end
+    end
+    
+    local data = LocalPlayer:FindFirstChild("Data")
+    if data then
+        local teamValue = data:FindFirstChild("Team")
+        if teamValue then return tostring(teamValue.Value) end
+    end
+    
+    local team = LocalPlayer:FindFirstChild("Team")
+    if team then
+        if team:IsA("StringValue") or team:IsA("IntValue") then
+            return tostring(team.Value)
+        end
+    end
+    
+    local playerGui = LocalPlayer:FindFirstChild("PlayerGui")
+    if playerGui then
+        local hud = playerGui:FindFirstChild("HUD")
+        if hud then
+            local teamName = hud:FindFirstChild("TeamName")
+            if teamName then return tostring(teamName.Text) end
+        end
+    end
+    
+    return nil
+end
+
+local function ShouldShowESP(player)
+    if player == LocalPlayer then
+        return false
+    end
+    
+    if not CONFIG.Enabled then
+        return false
+    end
+    
+    if CONFIG.TeamCheck then
+        local playerTeam = GetPlayerTeam(player)
+        local localTeam = GetLocalPlayerTeam()
+        
+        if not playerTeam or not localTeam then
+            return true
+        end
+        
+        if playerTeam == localTeam then
+            return false
+        end
+    end
+    
+    return true
+end
+
+local function SetESPVisibility(player, visible)
+    if PlayerESPs[player] and PlayerESPs[player].ScreenGui then
+        PlayerESPs[player].ScreenGui.Enabled = visible
+    end
+end
+
+local function AddESP(player)
+    if player == LocalPlayer then return end
+    if PlayerESPs[player] then return end
+    
+    local function setupCharacter(character)
+        if not character then return end
+        
+        local humanoid = character:WaitForChild("Humanoid", 5)
+        local rootPart = character:WaitForChild("HumanoidRootPart", 5)
+        
+        if not humanoid or not rootPart then return end
+        
+        local screenGui, hpBar, hpText = GetESPFromPool()
+        screenGui.Adornee = rootPart
+        screenGui.Parent = rootPart
+        screenGui.Enabled = ShouldShowESP(player)
+        
+        PlayerESPs[player] = {
+            ScreenGui = screenGui,
+            HpBar = hpBar,
+            HpText = hpText,
+            Character = character,
+            Humanoid = humanoid
+        }
+        
+        UpdateHPBar(hpBar, hpText, humanoid.Health, humanoid.MaxHealth)
+        
+        local healthConnection = humanoid.HealthChanged:Connect(function(health)
+            if ShouldShowESP(player) then
+                UpdateHPBar(hpBar, hpText, health, humanoid.MaxHealth)
+            end
+        end)
+        
+        local diedConnection
+        diedConnection = humanoid.Died:Connect(function()
+            if healthConnection then healthConnection:Disconnect() end
+            if diedConnection then diedConnection:Disconnect() end
+        end)
+        
+        character.AncestryChanged:Connect(function()
+            if not character.Parent then
+                if healthConnection then healthConnection:Disconnect() end
+                if diedConnection then diedConnection:Disconnect() end
+                if PlayerESPs[player] and PlayerESPs[player].ScreenGui then
+                    ReturnESPToPool(PlayerESPs[player].ScreenGui)
+                end
+                PlayerESPs[player] = nil
+            end
+        end)
+    end
+    
+    if player.Character then
+        setupCharacter(player.Character)
+    end
+    
+    player.CharacterAdded:Connect(function(character)
+        if PlayerESPs[player] and PlayerESPs[player].ScreenGui then
+            ReturnESPToPool(PlayerESPs[player].ScreenGui)
+        end
+        PlayerESPs[player] = nil
+        
+        task.wait(0.5)
+        setupCharacter(character)
+    end)
+end
+
+local function RemoveESP(player)
+    if PlayerESPs[player] then
+        if PlayerESPs[player].ScreenGui then
+            ReturnESPToPool(PlayerESPs[player].ScreenGui)
+        end
+        PlayerESPs[player] = nil
+    end
+end
+
+local function RefreshAllESP()
+    local updateBatch = {}
+    for player, _ in pairs(PlayerESPs) do
+        if player and player.Parent then
+            table.insert(updateBatch, {player = player, visible = ShouldShowESP(player)})
+        else
+            table.insert(updateBatch, {player = player, remove = true})
+        end
+    end
+    
+    if CONFIG.UseAsync and #updateBatch > 5 then
+        task.spawn(function()
+            for _, update in ipairs(updateBatch) do
+                if update.remove then
+                    RemoveESP(update.player)
+                else
+                    SetESPVisibility(update.player, update.visible)
+                end
+            end
+        end)
+    else
+        for _, update in ipairs(updateBatch) do
+            if update.remove then
+                RemoveESP(update.player)
+            else
+                SetESPVisibility(update.player, update.visible)
+            end
+        end
+    end
+end
+
+local function Initialize()
+    for _, player in pairs(Players:GetPlayers()) do
+        AddESP(player)
+    end
+    
+    Players.PlayerAdded:Connect(function(player)
+        AddESP(player)
+    end)
+    
+    Players.PlayerRemoving:Connect(function(player)
+        RemoveESP(player)
+    end)
+end
+
+Initialize()
+
+DemoTab:Separator({Text = "HP ESP"})
+
+DemoTab:Checkbox({
+	Value = false,
+	Label = "Bật HP ESP",
+	Callback = function(self, Value)
+		CONFIG.Enabled = Value
+		RefreshAllESP()
+	end
+})
+
+DemoTab:Checkbox({
+	Value = false,
+	Label = "Kiểm Tra Team",
+	Callback = function(self, Value)
+		CONFIG.TeamCheck = Value
+		RefreshAllESP()
+	end
+})
+
+DemoTab:Checkbox({
+	Value = true,
+	Label = "Async Update",
+	Callback = function(self, Value)
+		CONFIG.UseAsync = Value
+	end
+})
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local Workspace = game:GetService("Workspace")
+local Camera = Workspace.CurrentCamera
+
+local LocalPlayer = Players.LocalPlayer
+
+local CONFIG = {
+    Enabled = false,
+    TeamCheck = false,
+    BoxThickness = 2,
+    BoxColor = Color3.fromRGB(255, 255, 255),
+    BoxTransparency = 0.8,
+    TeamColor = false,
+    UseAsync = true
+}
+
+local PlayerBoxes = {}
+local DrawingPool = {}
+local PoolSize = 0
+local MaxPoolSize = 50
+
+local function GetLineFromPool()
+    if PoolSize > 0 then
+        local line = DrawingPool[PoolSize]
+        DrawingPool[PoolSize] = nil
+        PoolSize = PoolSize - 1
+        return line
+    else
+        local line = Drawing.new("Line")
+        line.Thickness = CONFIG.BoxThickness
+        line.Color = CONFIG.BoxColor
+        line.Transparency = CONFIG.BoxTransparency
+        return line
+    end
+end
+
+local function ReturnLineToPool(line)
+    if PoolSize < MaxPoolSize then
+        line.Visible = false
+        PoolSize = PoolSize + 1
+        DrawingPool[PoolSize] = line
+    else
+        line:Remove()
+    end
+end
+
+local function GetPlayerTeam(player)
+    if not CONFIG.TeamCheck or not player then return nil end
+    
+    local team = player.Team
+    if team then return tostring(team.Name) end
+    
+    local leaderstats = player:FindFirstChild("leaderstats")
+    if leaderstats then
+        local teamValue = leaderstats:FindFirstChild("Team")
+        if teamValue then return tostring(teamValue.Value) end
+    end
+    
+    local data = player:FindFirstChild("Data")
+    if data then
+        local teamValue = data:FindFirstChild("Team")
+        if teamValue then return tostring(teamValue.Value) end
+    end
+    
+    local team = player:FindFirstChild("Team")
+    if team then
+        if team:IsA("StringValue") or team:IsA("IntValue") then
+            return tostring(team.Value)
+        end
+    end
+    
+    local playerGui = player:FindFirstChild("PlayerGui")
+    if playerGui then
+        local hud = playerGui:FindFirstChild("HUD")
+        if hud then
+            local teamName = hud:FindFirstChild("TeamName")
+            if teamName then return tostring(teamName.Text) end
+        end
+    end
+    
+    return nil
+end
+
+local function GetLocalPlayerTeam()
+    if not CONFIG.TeamCheck or not LocalPlayer then return nil end
+    
+    local team = LocalPlayer.Team
+    if team then return tostring(team.Name) end
+    
+    local leaderstats = LocalPlayer:FindFirstChild("leaderstats")
+    if leaderstats then
+        local teamValue = leaderstats:FindFirstChild("Team")
+        if teamValue then return tostring(teamValue.Value) end
+    end
+    
+    local data = LocalPlayer:FindFirstChild("Data")
+    if data then
+        local teamValue = data:FindFirstChild("Team")
+        if teamValue then return tostring(teamValue.Value) end
+    end
+    
+    local team = LocalPlayer:FindFirstChild("Team")
+    if team then
+        if team:IsA("StringValue") or team:IsA("IntValue") then
+            return tostring(team.Value)
+        end
+    end
+    
+    local playerGui = LocalPlayer:FindFirstChild("PlayerGui")
+    if playerGui then
+        local hud = playerGui:FindFirstChild("HUD")
+        if hud then
+            local teamName = hud:FindFirstChild("TeamName")
+            if teamName then return tostring(teamName.Text) end
+        end
+    end
+    
+    return nil
+end
+
+local function ShouldShowBox(player)
+    if player == LocalPlayer then
+        return false
+    end
+    
+    if not CONFIG.Enabled then
+        return false
+    end
+    
+    if CONFIG.TeamCheck then
+        local playerTeam = GetPlayerTeam(player)
+        local localTeam = GetLocalPlayerTeam()
+        
+        if not playerTeam or not localTeam then
+            return true
+        end
+        
+        if playerTeam == localTeam then
+            return false
+        end
+    end
+    
+    return true
+end
+
+local function DrawBox2D(character)
+    if not character or not character.Parent then return nil end
+    
+    local humanoidRootPart = character:FindFirstChild("HumanoidRootPart")
+    local humanoid = character:FindFirstChild("Humanoid")
+    local head = character:FindFirstChild("Head")
+    
+    if not humanoidRootPart or not humanoid or humanoid.Health <= 0 or not head then
+        return nil
+    end
+    
+    local topPosition = head.Position + Vector3.new(0, head.Size.Y / 2, 0)
+    local bottomPosition = humanoidRootPart.Position - Vector3.new(0, 3, 0)
+    
+    local topScreen = Camera:WorldToViewportPoint(topPosition)
+    local bottomScreen = Camera:WorldToViewportPoint(bottomPosition)
+    local centerScreen = Camera:WorldToViewportPoint(humanoidRootPart.Position)
+    
+    if topScreen.Z <= 0 or bottomScreen.Z <= 0 then
+        return nil
+    end
+    
+    local screenHeight = math.abs(topScreen.Y - bottomScreen.Y)
+    local screenWidth = screenHeight * 0.6
+    
+    local centerX = centerScreen.X
+    local centerY = topScreen.Y + screenHeight / 2
+    
+    local topLeftX = centerX - screenWidth / 2
+    local topLeftY = topScreen.Y
+    local topRightX = centerX + screenWidth / 2
+    local topRightY = topScreen.Y
+    local bottomLeftX = centerX - screenWidth / 2
+    local bottomLeftY = bottomScreen.Y
+    local bottomRightX = centerX + screenWidth / 2
+    local bottomRightY = bottomScreen.Y
+    
+    return {
+        TopLeft = Vector2.new(topLeftX, topLeftY),
+        TopRight = Vector2.new(topRightX, topRightY),
+        BottomLeft = Vector2.new(bottomLeftX, bottomLeftY),
+        BottomRight = Vector2.new(bottomRightX, bottomRightY)
+    }
+end
+
+local function UpdateBox(player)
+    if not ShouldShowBox(player) then
+        if PlayerBoxes[player] then
+            for _, line in ipairs(PlayerBoxes[player].Lines) do
+                ReturnLineToPool(line)
+            end
+            PlayerBoxes[player] = nil
+        end
+        return
+    end
+    
+    local character = player.Character
+    if not character then
+        if PlayerBoxes[player] then
+            for _, line in ipairs(PlayerBoxes[player].Lines) do
+                ReturnLineToPool(line)
+            end
+            PlayerBoxes[player] = nil
+        end
+        return
+    end
+    
+    local boxPoints = DrawBox2D(character)
+    if not boxPoints then
+        if PlayerBoxes[player] then
+            for _, line in ipairs(PlayerBoxes[player].Lines) do
+                line.Visible = false
+            end
+        end
+        return
+    end
+    
+    if not PlayerBoxes[player] then
+        PlayerBoxes[player] = {
+            Lines = {}
+        }
+        for i = 1, 4 do
+            table.insert(PlayerBoxes[player].Lines, GetLineFromPool())
+        end
+    end
+    
+    local lines = PlayerBoxes[player].Lines
+    
+    local lineColor = CONFIG.BoxColor
+    if CONFIG.TeamColor and player.Team then
+        lineColor = player.Team.TeamColor.Color
+    end
+    
+    lines[1].From = boxPoints.TopLeft
+    lines[1].To = boxPoints.TopRight
+    lines[1].Visible = true
+    lines[1].Color = lineColor
+    lines[1].Thickness = CONFIG.BoxThickness
+    lines[1].Transparency = CONFIG.BoxTransparency
+    
+    lines[2].From = boxPoints.TopRight
+    lines[2].To = boxPoints.BottomRight
+    lines[2].Visible = true
+    lines[2].Color = lineColor
+    lines[2].Thickness = CONFIG.BoxThickness
+    lines[2].Transparency = CONFIG.BoxTransparency
+    
+    lines[3].From = boxPoints.BottomRight
+    lines[3].To = boxPoints.BottomLeft
+    lines[3].Visible = true
+    lines[3].Color = lineColor
+    lines[3].Thickness = CONFIG.BoxThickness
+    lines[3].Transparency = CONFIG.BoxTransparency
+    
+    lines[4].From = boxPoints.BottomLeft
+    lines[4].To = boxPoints.TopLeft
+    lines[4].Visible = true
+    lines[4].Color = lineColor
+    lines[4].Thickness = CONFIG.BoxThickness
+    lines[4].Transparency = CONFIG.BoxTransparency
+end
+
+local function UpdateAllBoxes()
+    local updateBatch = {}
+    for _, player in ipairs(Players:GetPlayers()) do
+        if player ~= LocalPlayer then
+            table.insert(updateBatch, player)
+        end
+    end
+    
+    if CONFIG.UseAsync and #updateBatch > 5 then
+        task.spawn(function()
+            for _, player in ipairs(updateBatch) do
+                UpdateBox(player)
+            end
+        end)
+    else
+        for _, player in ipairs(updateBatch) do
+            UpdateBox(player)
+        end
+    end
+end
+
+local function HideAllBoxes()
+    for player, data in pairs(PlayerBoxes) do
+        if data and data.Lines then
+            for _, line in ipairs(data.Lines) do
+                line.Visible = false
+            end
+        end
+    end
+end
+
+local function RemoveBox(player)
+    if PlayerBoxes[player] then
+        for _, line in ipairs(PlayerBoxes[player].Lines) do
+            ReturnLineToPool(line)
+        end
+        PlayerBoxes[player] = nil
+    end
+end
+
+local function RefreshAllBoxes()
+    local updateBatch = {}
+    for player, _ in pairs(PlayerBoxes) do
+        if player and player.Parent then
+            table.insert(updateBatch, {player = player, update = true})
+        else
+            table.insert(updateBatch, {player = player, remove = true})
+        end
+    end
+    
+    if CONFIG.UseAsync and #updateBatch > 5 then
+        task.spawn(function()
+            for _, item in ipairs(updateBatch) do
+                if item.remove then
+                    RemoveBox(item.player)
+                else
+                    UpdateBox(item.player)
+                end
+            end
+        end)
+    else
+        for _, item in ipairs(updateBatch) do
+            if item.remove then
+                RemoveBox(item.player)
+            else
+                UpdateBox(item.player)
+            end
+        end
+    end
+end
+
+local function Initialize()
+    RunService.RenderStepped:Connect(function()
+        if CONFIG.Enabled then
+            UpdateAllBoxes()
+        else
+            HideAllBoxes()
+        end
+    end)
+    
+    Players.PlayerAdded:Connect(function(player)
+        player.CharacterAdded:Connect(function(character)
+            UpdateBox(player)
+        end)
+        if player.Character then
+            UpdateBox(player)
+        end
+    end)
+    
+    Players.PlayerRemoving:Connect(function(player)
+        RemoveBox(player)
+    end)
+end
+
+Initialize()
+
+DemoTab:Separator({Text = "2D Box"})
+
+DemoTab:Checkbox({
+	Value = false,
+	Label = "Bật 2D Box",
+	Callback = function(self, Value)
+		CONFIG.Enabled = Value
+	end
+})
+
+DemoTab:SliderColor3({
+	Value = Color3.fromRGB(255, 255, 255),
+	Label = "Màu Box",
+	Callback = function(self, Value)
+		CONFIG.BoxColor = Value
+	end
+})
+
+DemoTab:Checkbox({
+	Value = false,
+	Label = "Kiểm Tra Team",
+	Callback = function(self, Value)
+		CONFIG.TeamCheck = Value
+		RefreshAllBoxes()
+	end
+})
+
+DemoTab:Checkbox({
+	Value = false,
+	Label = "Màu Team",
+	Callback = function(self, Value)
+		CONFIG.TeamColor = Value
+	end
+})
+
+DemoTab:Checkbox({
+	Value = true,
+	Label = "Async Update",
+	Callback = function(self, Value)
+		CONFIG.UseAsync = Value
+	end
+})
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local Workspace = game:GetService("Workspace")
+local Camera = Workspace.CurrentCamera
+
+local LocalPlayer = Players.LocalPlayer
+
+local CONFIG = {
+    Enabled = false,
+    TeamCheck = false,
+    BoxThickness = 2,
+    BoxColor = Color3.fromRGB(255, 255, 255),
+    BoxTransparency = 0.8,
+    TeamColor = false,
+    UseAsync = true
+}
+
+local PlayerBoxes = {}
+local DrawingPool = {}
+local PoolSize = 0
+local MaxPoolSize = 100
+
+local function GetLineFromPool()
+    if PoolSize > 0 then
+        local line = DrawingPool[PoolSize]
+        DrawingPool[PoolSize] = nil
+        PoolSize = PoolSize - 1
+        return line
+    else
+        local line = Drawing.new("Line")
+        line.Thickness = CONFIG.BoxThickness
+        line.Color = CONFIG.BoxColor
+        line.Transparency = CONFIG.BoxTransparency
+        return line
+    end
+end
+
+local function ReturnLineToPool(line)
+    if PoolSize < MaxPoolSize then
+        line.Visible = false
+        PoolSize = PoolSize + 1
+        DrawingPool[PoolSize] = line
+    else
+        line:Remove()
+    end
+end
+
+local function GetPlayerTeam(player)
+    if not CONFIG.TeamCheck or not player then return nil end
+    
+    local team = player.Team
+    if team then return tostring(team.Name) end
+    
+    local leaderstats = player:FindFirstChild("leaderstats")
+    if leaderstats then
+        local teamValue = leaderstats:FindFirstChild("Team")
+        if teamValue then return tostring(teamValue.Value) end
+    end
+    
+    local data = player:FindFirstChild("Data")
+    if data then
+        local teamValue = data:FindFirstChild("Team")
+        if teamValue then return tostring(teamValue.Value) end
+    end
+    
+    local team = player:FindFirstChild("Team")
+    if team then
+        if team:IsA("StringValue") or team:IsA("IntValue") then
+            return tostring(team.Value)
+        end
+    end
+    
+    local playerGui = player:FindFirstChild("PlayerGui")
+    if playerGui then
+        local hud = playerGui:FindFirstChild("HUD")
+        if hud then
+            local teamName = hud:FindFirstChild("TeamName")
+            if teamName then return tostring(teamName.Text) end
+        end
+    end
+    
+    return nil
+end
+
+local function GetLocalPlayerTeam()
+    if not CONFIG.TeamCheck or not LocalPlayer then return nil end
+    
+    local team = LocalPlayer.Team
+    if team then return tostring(team.Name) end
+    
+    local leaderstats = LocalPlayer:FindFirstChild("leaderstats")
+    if leaderstats then
+        local teamValue = leaderstats:FindFirstChild("Team")
+        if teamValue then return tostring(teamValue.Value) end
+    end
+    
+    local data = LocalPlayer:FindFirstChild("Data")
+    if data then
+        local teamValue = data:FindFirstChild("Team")
+        if teamValue then return tostring(teamValue.Value) end
+    end
+    
+    local team = LocalPlayer:FindFirstChild("Team")
+    if team then
+        if team:IsA("StringValue") or team:IsA("IntValue") then
+            return tostring(team.Value)
+        end
+    end
+    
+    local playerGui = LocalPlayer:FindFirstChild("PlayerGui")
+    if playerGui then
+        local hud = playerGui:FindFirstChild("HUD")
+        if hud then
+            local teamName = hud:FindFirstChild("TeamName")
+            if teamName then return tostring(teamName.Text) end
+        end
+    end
+    
+    return nil
+end
+
+local function ShouldShowBox(player)
+    if player == LocalPlayer then
+        return false
+    end
+    
+    if not CONFIG.Enabled then
+        return false
+    end
+    
+    if CONFIG.TeamCheck then
+        local playerTeam = GetPlayerTeam(player)
+        local localTeam = GetLocalPlayerTeam()
+        
+        if not playerTeam or not localTeam then
+            return true
+        end
+        
+        if playerTeam == localTeam then
+            return false
+        end
+    end
+    
+    return true
+end
+
+local function DrawBox3D(character)
+    if not character or not character.Parent then return nil end
+    
+    local humanoid = character:FindFirstChild("Humanoid")
+    local head = character:FindFirstChild("Head")
+    
+    if not humanoid or humanoid.Health <= 0 or not head then
+        return nil
+    end
+    
+    local minX, maxX = math.huge, -math.huge
+    local minY, maxY = math.huge, -math.huge
+    local minZ, maxZ = math.huge, -math.huge
+    
+    for _, part in ipairs(character:GetDescendants()) do
+        if part:IsA("BasePart") then
+            local pos = part.Position
+            local size = part.Size
+            
+            minX = math.min(minX, pos.X - size.X / 2)
+            maxX = math.max(maxX, pos.X + size.X / 2)
+            minY = math.min(minY, pos.Y - size.Y / 2)
+            maxY = math.max(maxY, pos.Y + size.Y / 2)
+            minZ = math.min(minZ, pos.Z - size.Z / 2)
+            maxZ = math.max(maxZ, pos.Z + size.Z / 2)
+        end
+    end
+    
+    if minX == math.huge then
+        return nil
+    end
+    
+    local corners = {
+        Vector3.new(minX, minY, minZ),
+        Vector3.new(maxX, minY, minZ),
+        Vector3.new(maxX, minY, maxZ),
+        Vector3.new(minX, minY, maxZ),
+        Vector3.new(minX, maxY, minZ),
+        Vector3.new(maxX, maxY, minZ),
+        Vector3.new(maxX, maxY, maxZ),
+        Vector3.new(minX, maxY, maxZ)
+    }
+    
+    local screenCorners = {}
+    for i, corner in ipairs(corners) do
+        local screenPos = Camera:WorldToViewportPoint(corner)
+        if screenPos.Z <= 0 then
+            return nil
+        end
+        screenCorners[i] = Vector2.new(screenPos.X, screenPos.Y)
+    end
+    
+    return screenCorners
+end
+
+local function UpdateBox(player)
+    if not ShouldShowBox(player) then
+        if PlayerBoxes[player] then
+            for _, line in ipairs(PlayerBoxes[player].Lines) do
+                ReturnLineToPool(line)
+            end
+            PlayerBoxes[player] = nil
+        end
+        return
+    end
+    
+    local character = player.Character
+    if not character then
+        if PlayerBoxes[player] then
+            for _, line in ipairs(PlayerBoxes[player].Lines) do
+                ReturnLineToPool(line)
+            end
+            PlayerBoxes[player] = nil
+        end
+        return
+    end
+    
+    local screenCorners = DrawBox3D(character)
+    if not screenCorners then
+        if PlayerBoxes[player] then
+            for _, line in ipairs(PlayerBoxes[player].Lines) do
+                line.Visible = false
+            end
+        end
+        return
+    end
+    
+    if not PlayerBoxes[player] then
+        PlayerBoxes[player] = {
+            Lines = {}
+        }
+        for i = 1, 12 do
+            table.insert(PlayerBoxes[player].Lines, GetLineFromPool())
+        end
+    end
+    
+    local lines = PlayerBoxes[player].Lines
+    
+    local lineColor = CONFIG.BoxColor
+    if CONFIG.TeamColor and player.Team then
+        lineColor = player.Team.TeamColor.Color
+    end
+    
+    local lineIndex = 1
+    
+    for i = 1, 4 do
+        lines[lineIndex].From = screenCorners[i]
+        lines[lineIndex].To = screenCorners[i % 4 + 1]
+        lines[lineIndex].Visible = true
+        lines[lineIndex].Color = lineColor
+        lines[lineIndex].Thickness = CONFIG.BoxThickness
+        lines[lineIndex].Transparency = CONFIG.BoxTransparency
+        lineIndex = lineIndex + 1
+    end
+    
+    for i = 5, 8 do
+        lines[lineIndex].From = screenCorners[i]
+        lines[lineIndex].To = screenCorners[(i - 4) % 4 + 5]
+        lines[lineIndex].Visible = true
+        lines[lineIndex].Color = lineColor
+        lines[lineIndex].Thickness = CONFIG.BoxThickness
+        lines[lineIndex].Transparency = CONFIG.BoxTransparency
+        lineIndex = lineIndex + 1
+    end
+    
+    for i = 1, 4 do
+        lines[lineIndex].From = screenCorners[i]
+        lines[lineIndex].To = screenCorners[i + 4]
+        lines[lineIndex].Visible = true
+        lines[lineIndex].Color = lineColor
+        lines[lineIndex].Thickness = CONFIG.BoxThickness
+        lines[lineIndex].Transparency = CONFIG.BoxTransparency
+        lineIndex = lineIndex + 1
+    end
+end
+
+local function UpdateAllBoxes()
+    local updateBatch = {}
+    for _, player in ipairs(Players:GetPlayers()) do
+        if player ~= LocalPlayer then
+            table.insert(updateBatch, player)
+        end
+    end
+    
+    if CONFIG.UseAsync and #updateBatch > 5 then
+        task.spawn(function()
+            for _, player in ipairs(updateBatch) do
+                UpdateBox(player)
+            end
+        end)
+    else
+        for _, player in ipairs(updateBatch) do
+            UpdateBox(player)
+        end
+    end
+end
+
+local function HideAllBoxes()
+    for player, data in pairs(PlayerBoxes) do
+        if data and data.Lines then
+            for _, line in ipairs(data.Lines) do
+                line.Visible = false
+            end
+        end
+    end
+end
+
+local function RemoveBox(player)
+    if PlayerBoxes[player] then
+        for _, line in ipairs(PlayerBoxes[player].Lines) do
+            ReturnLineToPool(line)
+        end
+        PlayerBoxes[player] = nil
+    end
+end
+
+local function RefreshAllBoxes()
+    local updateBatch = {}
+    for player, _ in pairs(PlayerBoxes) do
+        if player and player.Parent then
+            table.insert(updateBatch, {player = player, update = true})
+        else
+            table.insert(updateBatch, {player = player, remove = true})
+        end
+    end
+    
+    if CONFIG.UseAsync and #updateBatch > 5 then
+        task.spawn(function()
+            for _, item in ipairs(updateBatch) do
+                if item.remove then
+                    RemoveBox(item.player)
+                else
+                    UpdateBox(item.player)
+                end
+            end
+        end)
+    else
+        for _, item in ipairs(updateBatch) do
+            if item.remove then
+                RemoveBox(item.player)
+            else
+                UpdateBox(item.player)
+            end
+        end
+    end
+end
+
+local function Initialize()
+    RunService.RenderStepped:Connect(function()
+        if CONFIG.Enabled then
+            UpdateAllBoxes()
+        else
+            HideAllBoxes()
+        end
+    end)
+    
+    Players.PlayerAdded:Connect(function(player)
+        player.CharacterAdded:Connect(function(character)
+            UpdateBox(player)
+        end)
+        if player.Character then
+            UpdateBox(player)
+        end
+    end)
+    
+    Players.PlayerRemoving:Connect(function(player)
+        RemoveBox(player)
+    end)
+end
+
+Initialize()
+
+DemoTab:Separator({Text = "3D Box"})
+
+DemoTab:Checkbox({
+	Value = false,
+	Label = "Bật 3D Box",
+	Callback = function(self, Value)
+		CONFIG.Enabled = Value
+	end
+})
+
+DemoTab:SliderColor3({
+	Value = Color3.fromRGB(255, 255, 255),
+	Label = "Màu Box",
+	Callback = function(self, Value)
+		CONFIG.BoxColor = Value
+	end
+})
+
+DemoTab:Checkbox({
+	Value = false,
+	Label = "Kiểm Tra Team",
+	Callback = function(self, Value)
+		CONFIG.TeamCheck = Value
+		RefreshAllBoxes()
+	end
+})
+
+DemoTab:Checkbox({
+	Value = false,
+	Label = "Màu Team",
+	Callback = function(self, Value)
+		CONFIG.TeamColor = Value
+	end
+})
+
+DemoTab:Checkbox({
+	Value = true,
+	Label = "Async Update",
+	Callback = function(self, Value)
+		CONFIG.UseAsync = Value
+	end
+})
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local TweenService = game:GetService("TweenService")
+local LocalPlayer = Players.LocalPlayer
+
+_G.ChamsSettings = {
+    Enabled = false,
+    TeamCheck = false,
+    RoleCheck = false,
+    UseTeamColor = false,
+    FillTransparency = 0.5,
+    OutlineTransparency = 0,
+    ChamsColor = Color3.fromRGB(0, 255, 0),
+    UseAsync = true,
+    
+    Colors = {
+        Outline = Color3.fromRGB(255, 255, 255),
+        Roles = {
+            ["Murderer"] = Color3.fromRGB(255, 0, 0),
+            ["Sheriff"] = Color3.fromRGB(0, 0, 255),
+            ["Innocent"] = Color3.fromRGB(0, 255, 0),
+        }
     },
-    PC = {
-        Width = 400,
-        Height = 500,
-        ButtonHeight = 40,
-        LabelHeight = 30,
-        TextBoxHeight = 35,
-        Padding = 10,
-        FontSize = 14
+    
+    Animation = {
+        Duration = 1,
+        Style = Enum.EasingStyle.Sine,
+        Direction = Enum.EasingDirection.Out
     }
 }
 
-local CONFIG = IsMobile and SCREEN_CONFIG.MOBILE or SCREEN_CONFIG.PC
+local PlayerRoles = {}
+local GameState = { IsRoundActive = false }
+local ActiveChams = {}
 
--- Tạo panel chính
-function UILibrary.CreatePanel(title, customSize)
-    local screenSize = customSize or UDim2.new(0, CONFIG.Width, 0, CONFIG.Height)
+local function GetPlayerTeam(player)
+    if not _G.ChamsSettings.TeamCheck or not player then return nil end
     
-    local panel = Instance.new("ScreenGui")
-    panel.Name = "UIPanel"
-    panel.ResetOnSpawn = false
-    panel.Enabled = true
-    panel.Parent = Players.LocalPlayer:WaitForChild("PlayerGui")
+    local team = player.Team
+    if team then return tostring(team.Name) end
     
-    -- Background
-    local background = Instance.new("Frame")
-    background.Name = "Background"
-    background.Size = screenSize
-    background.Position = UDim2.new(0.5, -screenSize.X.Offset/2, 0.5, -screenSize.Y.Offset/2)
-    background.BackgroundColor3 = DEFAULT_COLORS.Secondary
-    background.BorderColor3 = DEFAULT_COLORS.Border
-    background.BorderSizePixel = 2
-    background.Parent = panel
-    
-    -- Title
-    local titleLabel = Instance.new("TextLabel")
-    titleLabel.Name = "Title"
-    titleLabel.Size = UDim2.new(1, 0, 0, IsMobile and 50 or 40)
-    titleLabel.BackgroundColor3 = DEFAULT_COLORS.Primary
-    titleLabel.TextColor3 = DEFAULT_COLORS.Text
-    titleLabel.TextSize = IsMobile and 18 or 16
-    titleLabel.Font = Enum.Font.GothamBold
-    titleLabel.Text = title or "UI Panel"
-    titleLabel.Parent = background
-    
-    -- Container
-    local container = Instance.new("ScrollingFrame")
-    container.Name = "Container"
-    container.Size = UDim2.new(1, -CONFIG.Padding*2, 1, -(IsMobile and 60 or 50))
-    container.Position = UDim2.new(0, CONFIG.Padding, 0, IsMobile and 50 or 40)
-    container.BackgroundTransparency = 1
-    container.ScrollBarThickness = 8
-    container.CanvasSize = UDim2.new(0, 0, 0, 0)
-    container.Parent = background
-    
-    -- UIListLayout
-    local listLayout = Instance.new("UIListLayout")
-    listLayout.Padding = UDim.new(0, CONFIG.Padding)
-    listLayout.Parent = container
-    
-    -- Auto update canvas size
-    listLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
-        container.CanvasSize = UDim2.new(0, 0, 0, listLayout.AbsoluteContentSize.Y)
-    end)
-    
-    -- Drag functionality
-    if IS_PC then
-        local dragging = false
-        local dragInput
-        local dragStart
-        local startPos
-        
-        background.InputBegan:Connect(function(input, gameProcessed)
-            if input.UserInputType == Enum.UserInputType.MouseButton1 then
-                dragging = true
-                dragStart = input.Position
-                startPos = background.Position
-                dragInput = input
-            end
-        end)
-        
-        UserInputService.InputChanged:Connect(function(input, gameProcessed)
-            if dragging and input == dragInput then
-                local delta = input.Position - dragStart
-                background.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
-            end
-        end)
-        
-        UserInputService.InputEnded:Connect(function(input, gameProcessed)
-            if input == dragInput then
-                dragging = false
-            end
-        end)
+    local leaderstats = player:FindFirstChild("leaderstats")
+    if leaderstats then
+        local teamValue = leaderstats:FindFirstChild("Team")
+        if teamValue then return tostring(teamValue.Value) end
     end
     
-    return background, container
-end
-
--- Tạo nút bấm
-function UILibrary.CreateButton(parent, text, callback)
-    local button = Instance.new("TextButton")
-    button.Name = "Button"
-    button.Size = UDim2.new(1, 0, 0, CONFIG.ButtonHeight)
-    button.BackgroundColor3 = DEFAULT_COLORS.Primary
-    button.TextColor3 = DEFAULT_COLORS.Text
-    button.TextSize = CONFIG.FontSize
-    button.Font = Enum.Font.Gotham
-    button.Text = text or "Button"
-    button.BorderSizePixel = 0
-    button.AutoButtonColor = false
-    button.Parent = parent
-    
-    local originalColor = button.BackgroundColor3
-    
-    local function onPress()
-        button.BackgroundColor3 = Color3.fromRGB(0, 100, 180)
+    local data = player:FindFirstChild("Data")
+    if data then
+        local teamValue = data:FindFirstChild("Team")
+        if teamValue then return tostring(teamValue.Value) end
     end
     
-    local function onRelease()
-        button.BackgroundColor3 = originalColor
-        if callback then
-            callback()
+    local team = player:FindFirstChild("Team")
+    if team then
+        if team:IsA("StringValue") or team:IsA("IntValue") then
+            return tostring(team.Value)
         end
     end
     
-    button.MouseButton1Down:Connect(onPress)
-    button.MouseButton1Up:Connect(onRelease)
-    button.TouchTap:Connect(function()
-        onPress()
-        task.wait(0.1)
-        onRelease()
-    end)
-    
-    if IS_PC then
-        button.MouseEnter:Connect(function()
-            button.BackgroundColor3 = Color3.fromRGB(0, 140, 230)
-        end)
-        button.MouseLeave:Connect(function()
-            button.BackgroundColor3 = originalColor
-        end)
-    end
-    
-    return button
-end
-
--- Tạo label
-function UILibrary.CreateLabel(parent, text)
-    local label = Instance.new("TextLabel")
-    label.Name = "Label"
-    label.Size = UDim2.new(1, 0, 0, CONFIG.LabelHeight)
-    label.BackgroundTransparency = 1
-    label.TextColor3 = DEFAULT_COLORS.Text
-    label.TextSize = CONFIG.FontSize
-    label.Font = Enum.Font.Gotham
-    label.Text = text or "Label"
-    label.TextWrapped = true
-    label.Parent = parent
-    return label
-end
-
--- Tạo TextBox
-function UILibrary.CreateTextBox(parent, placeholder)
-    local textBox = Instance.new("TextBox")
-    textBox.Name = "TextBox"
-    textBox.Size = UDim2.new(1, 0, 0, CONFIG.TextBoxHeight)
-    textBox.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
-    textBox.TextColor3 = DEFAULT_COLORS.Text
-    textBox.TextSize = CONFIG.FontSize
-    textBox.Font = Enum.Font.Gotham
-    textBox.PlaceholderText = placeholder or "Nhập text..."
-    textBox.PlaceholderColor3 = Color3.fromRGB(150, 150, 150)
-    textBox.BorderColor3 = DEFAULT_COLORS.Border
-    textBox.BorderSizePixel = 1
-    textBox.ClearTextOnFocus = false
-    textBox.Parent = parent
-    return textBox
-end
-
--- Tạo Checkbox
-function UILibrary.CreateCheckbox(parent, labelText, callback)
-    local container = Instance.new("Frame")
-    container.Name = "Checkbox"
-    container.Size = UDim2.new(1, 0, 0, CONFIG.ButtonHeight)
-    container.BackgroundTransparency = 1
-    container.Parent = parent
-    
-    local checkbox = Instance.new("TextButton")
-    checkbox.Name = "Box"
-    checkbox.Size = UDim2.new(0, 25, 0, 25)
-    checkbox.Position = UDim2.new(0, 0, 0.5, -12)
-    checkbox.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
-    checkbox.TextSize = 0
-    checkbox.BorderSizePixel = 0
-    checkbox.AutoButtonColor = false
-    checkbox.Parent = container
-    
-    local label = Instance.new("TextLabel")
-    label.Size = UDim2.new(1, -35, 1, 0)
-    label.Position = UDim2.new(0, 35, 0, 0)
-    label.BackgroundTransparency = 1
-    label.TextColor3 = DEFAULT_COLORS.Text
-    label.TextSize = CONFIG.FontSize
-    label.Font = Enum.Font.Gotham
-    label.Text = labelText or "Option"
-    label.TextXAlignment = Enum.TextXAlignment.Left
-    label.Parent = container
-    
-    local isChecked = false
-    
-    local function toggle()
-        isChecked = not isChecked
-        checkbox.BackgroundColor3 = isChecked and DEFAULT_COLORS.Primary or Color3.fromRGB(100, 100, 100)
-        if callback then callback(isChecked) end
-    end
-    
-    checkbox.MouseButton1Click:Connect(toggle)
-    checkbox.TouchTap:Connect(toggle)
-    
-    return container, checkbox
-end
-
--- Tạo Slider
-function UILibrary.CreateSlider(parent, minValue, maxValue, defaultValue, callback)
-    local container = Instance.new("Frame")
-    container.Name = "Slider"
-    container.Size = UDim2.new(1, 0, 0, CONFIG.ButtonHeight + 10)
-    container.BackgroundTransparency = 1
-    container.Parent = parent
-    
-    local background = Instance.new("Frame")
-    background.Size = UDim2.new(1, 0, 0, 5)
-    background.Position = UDim2.new(0, 0, 0.3, -2)
-    background.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
-    background.BorderSizePixel = 0
-    background.Parent = container
-    
-    local thumb = Instance.new("TextButton")
-    thumb.Name = "Thumb"
-    thumb.Size = UDim2.new(0, 20, 0, 20)
-    thumb.Position = UDim2.new(0, 0, 0.3, -7)
-    thumb.BackgroundColor3 = DEFAULT_COLORS.Primary
-    thumb.TextSize = 0
-    thumb.BorderSizePixel = 0
-    thumb.AutoButtonColor = false
-    thumb.Parent = container
-    
-    local valueLabel = Instance.new("TextLabel")
-    valueLabel.Size = UDim2.new(1, 0, 0, 20)
-    valueLabel.Position = UDim2.new(0, 0, 0.65, 0)
-    valueLabel.BackgroundTransparency = 1
-    valueLabel.TextColor3 = DEFAULT_COLORS.Text
-    valueLabel.TextSize = CONFIG.FontSize
-    valueLabel.Font = Enum.Font.Gotham
-    valueLabel.Parent = container
-    
-    local value = defaultValue or minValue
-    local isDragging = false
-    
-    local function updateSlider(inputPos)
-        local size = background.AbsoluteSize.X
-        local pos = math.max(0, math.min(inputPos - background.AbsolutePosition.X, size))
-        local percent = pos / size
-        value = minValue + (maxValue - minValue) * percent
-        thumb.Position = UDim2.new(0, (size - 20) * percent, 0.3, -7)
-        valueLabel.Text = string.format("%.0f", value)
-        if callback then callback(value) end
-    end
-    
-    thumb.MouseButton1Down:Connect(function() isDragging = true end)
-    UserInputService.InputEnded:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 then isDragging = false end
-    end)
-    UserInputService.InputChanged:Connect(function(input)
-        if isDragging and input.UserInputType == Enum.UserInputType.MouseMovement then
-            updateSlider(input.Position.X)
+    local playerGui = player:FindFirstChild("PlayerGui")
+    if playerGui then
+        local hud = playerGui:FindFirstChild("HUD")
+        if hud then
+            local teamName = hud:FindFirstChild("TeamName")
+            if teamName then return tostring(teamName.Text) end
         end
-    end)
+    end
     
-    thumb.TouchBegan:Connect(function() isDragging = true end)
-    thumb.TouchEnded:Connect(function() isDragging = false end)
-    thumb.TouchMoved:Connect(function(touch)
-        if isDragging then updateSlider(touch.Position.X) end
-    end)
-    
-    valueLabel.Text = string.format("%.0f", value)
-    return container
+    return nil
 end
 
-return UILibrary
+local function GetLocalPlayerTeam()
+    if not _G.ChamsSettings.TeamCheck or not LocalPlayer then return nil end
+    
+    local team = LocalPlayer.Team
+    if team then return tostring(team.Name) end
+    
+    local leaderstats = LocalPlayer:FindFirstChild("leaderstats")
+    if leaderstats then
+        local teamValue = leaderstats:FindFirstChild("Team")
+        if teamValue then return tostring(teamValue.Value) end
+    end
+    
+    local data = LocalPlayer:FindFirstChild("Data")
+    if data then
+        local teamValue = data:FindFirstChild("Team")
+        if teamValue then return tostring(teamValue.Value) end
+    end
+    
+    local team = LocalPlayer:FindFirstChild("Team")
+    if team then
+        if team:IsA("StringValue") or team:IsA("IntValue") then
+            return tostring(team.Value)
+        end
+    end
+    
+    local playerGui = LocalPlayer:FindFirstChild("PlayerGui")
+    if playerGui then
+        local hud = playerGui:FindFirstChild("HUD")
+        if hud then
+            local teamName = hud:FindFirstChild("TeamName")
+            if teamName then return tostring(teamName.Text) end
+        end
+    end
+    
+    return nil
+end
 
--- ===== HƯỚNG DÙNG EXPLOIT =====
--- local UILib = loadstring(game:HttpGet("https://raw.githubusercontent.com/MouriPre/MobilePreUi/refs/heads/main/MainUi2"))()
--- 
--- local panel, container = UILib.CreatePanel("Ứng dụng của tôi", UDim2.new(0, 350, 0, 500))
--- 
--- UILib.CreateLabel(container, "Chào mừng!")
--- UILib.CreateButton(container, "Nhấn tôi", function()
---     print("Nút được nhấn!")
--- end)
--- UILib.CreateTextBox(container, "Nhập tên...")
--- UILib.CreateCheckbox(container, "Bật tính năng")
--- UILib.CreateSlider(container, 0, 100, 50, function(value)
---     print("Giá trị:", value)
--- end)
+local function MonitorGameState()
+    local function checkRoundStatus()
+        local murderer = false
+        local sheriff = false
+        
+        for _, player in ipairs(Players:GetPlayers()) do
+            if player.Character then
+                local hasKnife = player.Character:FindFirstChild("Knife") or (player.Backpack and player.Backpack:FindFirstChild("Knife"))
+                local hasGun = player.Character:FindFirstChild("Gun") or (player.Backpack and player.Backpack:FindFirstChild("Gun"))
+                
+                if hasKnife then murderer = true end
+                if hasGun then sheriff = true end
+            end
+        end
+        
+        if not (murderer and sheriff) then
+            if GameState.IsRoundActive then
+                GameState.IsRoundActive = false
+                table.clear(PlayerRoles)
+            end
+        else
+            GameState.IsRoundActive = true
+        end
+    end
+    
+    RunService.Heartbeat:Connect(function()
+        checkRoundStatus()
+    end)
+end
+
+local function UpdatePlayerRole(Player)
+    if not GameState.IsRoundActive then return "Innocent" end
+    
+    local function CheckTools()
+        if not Player.Character then return "Innocent" end
+        if not Player.Backpack then return "Innocent" end
+        
+        for _, tool in pairs(Player.Character:GetChildren()) do
+            if tool:IsA("Tool") then
+                if tool.Name == "Knife" then return "Murderer"
+                elseif tool.Name == "Gun" then return "Sheriff" end
+            end
+        end
+        
+        for _, tool in pairs(Player.Backpack:GetChildren()) do
+            if tool:IsA("Tool") then
+                if tool.Name == "Knife" then return "Murderer"
+                elseif tool.Name == "Gun" then return "Sheriff" end
+            end
+        end
+        
+        return "Innocent"
+    end
+    
+    PlayerRoles[Player.UserId] = CheckTools()
+    
+    if not Player.Backpack:FindFirstChild("RoleMonitor") then
+        local monitor = Instance.new("BoolValue")
+        monitor.Name = "RoleMonitor"
+        monitor.Parent = Player.Backpack
+        
+        Player.Backpack.ChildAdded:Connect(function(child)
+            if child:IsA("Tool") and GameState.IsRoundActive then
+                PlayerRoles[Player.UserId] = CheckTools()
+            end
+        end)
+        
+        Player.Backpack.ChildRemoved:Connect(function(child)
+            if child:IsA("Tool") and GameState.IsRoundActive then
+                PlayerRoles[Player.UserId] = CheckTools()
+            end
+        end)
+    end
+    
+    if Player.Character and not Player.Character:FindFirstChild("RoleMonitor") then
+        local monitor = Instance.new("BoolValue")
+        monitor.Name = "RoleMonitor"
+        monitor.Parent = Player.Character
+        
+        Player.Character.ChildAdded:Connect(function(child)
+            if child:IsA("Tool") and GameState.IsRoundActive then
+                PlayerRoles[Player.UserId] = CheckTools()
+            end
+        end)
+        
+        Player.Character.ChildRemoved:Connect(function(child)
+            if child:IsA("Tool") and GameState.IsRoundActive then
+                PlayerRoles[Player.UserId] = CheckTools()
+            end
+        end)
+    end
+end
+
+MonitorGameState()
+
+local function GetPlayerRole(Player)
+    if not PlayerRoles[Player.UserId] then
+        UpdatePlayerRole(Player)
+    end
+    return PlayerRoles[Player.UserId] or "Innocent"
+end
+
+local function IsTeammate(Player)
+    if not _G.ChamsSettings.TeamCheck then return false end
+    
+    local playerTeam = GetPlayerTeam(Player)
+    local localTeam = GetLocalPlayerTeam()
+    
+    if not playerTeam or not localTeam then
+        return false
+    end
+    
+    return playerTeam == localTeam
+end
+
+local function GetTeamColor(Player)
+    if Player.Team then
+        return Player.Team.TeamColor.Color
+    end
+    return _G.ChamsSettings.ChamsColor
+end
+
+local function ApplyChams(Player)
+    local Connections = {}
+    local CurrentHighlighter
+    
+    UpdatePlayerRole(Player)
+    
+    local function Setup(Character)
+        if not Character then return end
+        
+        if CurrentHighlighter then
+            CurrentHighlighter:Destroy()
+        end
+        
+        local Highlighter = Instance.new("Highlight")
+        CurrentHighlighter = Highlighter
+        Highlighter.Parent = Character
+        Highlighter.FillTransparency = 1
+        Highlighter.OutlineTransparency = 1
+        
+        local AnimationInfo = TweenInfo.new(
+            _G.ChamsSettings.Animation.Duration,
+            _G.ChamsSettings.Animation.Style,
+            _G.ChamsSettings.Animation.Direction
+        )
+        
+        local FillTween = TweenService:Create(Highlighter, AnimationInfo, {
+            FillTransparency = _G.ChamsSettings.FillTransparency
+        })
+        
+        local OutlineTween = TweenService:Create(Highlighter, AnimationInfo, {
+            OutlineTransparency = _G.ChamsSettings.OutlineTransparency
+        })
+        
+        FillTween:Play()
+        OutlineTween:Play()
+        
+        local function Update()
+            if not _G.ChamsSettings.Enabled then
+                Highlighter.Enabled = false
+                return
+            end
+            
+            if IsTeammate(Player) then
+                Highlighter.Enabled = false
+                return
+            end
+            
+            Highlighter.Enabled = true
+            
+            local fillColor = _G.ChamsSettings.ChamsColor
+            
+            if _G.ChamsSettings.RoleCheck then
+                local role = GetPlayerRole(Player)
+                local roleColor = _G.ChamsSettings.Colors.Roles[role]
+                if roleColor then
+                    fillColor = roleColor
+                end
+            end
+            
+            if _G.ChamsSettings.UseTeamColor then
+                fillColor = GetTeamColor(Player)
+            end
+            
+            Highlighter.FillColor = fillColor
+            Highlighter.OutlineColor = _G.ChamsSettings.Colors.Outline
+        end
+        
+        local UpdateConnection = RunService.RenderStepped:Connect(Update)
+        table.insert(Connections, UpdateConnection)
+        
+        Character.ChildAdded:Connect(function(child)
+            if child:IsA("Tool") then
+                UpdatePlayerRole(Player)
+            end
+        end)
+        
+        Character.ChildRemoved:Connect(function(child)
+            if child:IsA("Tool") then
+                UpdatePlayerRole(Player)
+            end
+        end)
+        
+        local Humanoid = Character:FindFirstChild("Humanoid")
+        if Humanoid then
+            table.insert(Connections, Humanoid.Died:Connect(function()
+                local FadeOutTween = TweenService:Create(Highlighter, TweenInfo.new(0.5), {
+                    FillTransparency = 1,
+                    OutlineTransparency = 1
+                })
+                FadeOutTween.Completed:Connect(function()
+                    if Highlighter then
+                        Highlighter:Destroy()
+                    end
+                end)
+                FadeOutTween:Play()
+            end))
+        end
+    end
+    
+    if Player.Character then
+        Setup(Player.Character)
+    end
+    
+    local CharacterAddedConnection = Player.CharacterAdded:Connect(function(Character)
+        task.wait()
+        Setup(Character)
+    end)
+    
+    table.insert(Connections, CharacterAddedConnection)
+    
+    local function Cleanup()
+        for _, Connection in pairs(Connections) do
+            if Connection.Connected then
+                Connection:Disconnect()
+            end
+        end
+        if CurrentHighlighter then
+            CurrentHighlighter:Destroy()
+        end
+    end
+    
+    table.insert(Connections, Player.AncestryChanged:Connect(function(_, parent)
+        if not parent then
+            Cleanup()
+        end
+    end))
+    
+    return Cleanup
+end
+
+local function RemoveAllChams()
+    for Player, cleanup in pairs(ActiveChams) do
+        if cleanup then
+            cleanup()
+        end
+    end
+    table.clear(ActiveChams)
+end
+
+local function ApplyChamsToAll()
+    RemoveAllChams()
+    
+    local playerBatch = {}
+    for _, Player in pairs(Players:GetPlayers()) do
+        if Player ~= LocalPlayer then
+            table.insert(playerBatch, Player)
+        end
+    end
+    
+    if _G.ChamsSettings.UseAsync and #playerBatch > 5 then
+        task.spawn(function()
+            for _, Player in ipairs(playerBatch) do
+                if _G.ChamsSettings.Enabled then
+                    ActiveChams[Player] = ApplyChams(Player)
+                end
+            end
+        end)
+    else
+        for _, Player in ipairs(playerBatch) do
+            if _G.ChamsSettings.Enabled then
+                ActiveChams[Player] = ApplyChams(Player)
+            end
+        end
+    end
+end
+
+function ToggleChams(Value)
+    _G.ChamsSettings.Enabled = Value
+    if Value then
+        ApplyChamsToAll()
+        if not _G.ChamsInitialized then
+            _G.ChamsInitialized = true
+            Players.PlayerAdded:Connect(function(Player)
+                if Player ~= LocalPlayer and _G.ChamsSettings.Enabled then
+                    task.spawn(function()
+                        task.wait(0.1)
+                        ActiveChams[Player] = ApplyChams(Player)
+                    end)
+                end
+            end)
+        end
+    else
+        RemoveAllChams()
+    end
+end
+
+function SetChamsColor(Color)
+    _G.ChamsSettings.ChamsColor = Color
+end
+
+function ToggleTeamCheck(Value)
+    _G.ChamsSettings.TeamCheck = Value
+end
+
+function ToggleRoleCheck(Value)
+    _G.ChamsSettings.RoleCheck = Value
+end
+
+function ToggleTeamColor(Value)
+    _G.ChamsSettings.UseTeamColor = Value
+end
+
+function ToggleAsync(Value)
+    _G.ChamsSettings.UseAsync = Value
+end
+
+RunService.Heartbeat:Connect(function()
+    if _G.ChamsSettings.Enabled then
+        for _, Player in pairs(Players:GetPlayers()) do
+            if Player ~= LocalPlayer and Player.Character then
+                local highlight = Player.Character:FindFirstChild("Highlight")
+                if not highlight then
+                    ActiveChams[Player] = ApplyChams(Player)
+                end
+            end
+        end
+    end
+end)
+
+DemoTab:Separator({Text = "Chams"})
+
+DemoTab:Checkbox({
+	Value = false,
+	Label = "Bật Chams",
+	Callback = function(self, Value)
+		ToggleChams(Value)
+	end
+})
+
+DemoTab:SliderColor3({
+	Value = Color3.fromRGB(0, 255, 0),
+	Label = "Màu Chams",
+	Callback = function(self, Value)
+		SetChamsColor(Value)
+	end
+})
+
+DemoTab:Separator({Text = "Cài Đặt Chams"})
+
+DemoTab:Checkbox({
+	Value = false,
+	Label = "Kiểm Tra Team",
+	Callback = function(self, Value)
+		ToggleTeamCheck(Value)
+	end
+})
+
+DemoTab:Checkbox({
+	Value = false,
+	Label = "Kiểm Tra Vai Trò",
+	Callback = function(self, Value)
+		ToggleRoleCheck(Value)
+	end
+})
+
+DemoTab:Checkbox({
+	Value = false,
+	Label = "Màu Team",
+	Callback = function(self, Value)
+		ToggleTeamColor(Value)
+	end
+})
+
+DemoTab:Checkbox({
+	Value = true,
+	Label = "Async Update",
+	Callback = function(self, Value)
+		ToggleAsync(Value)
+	end
+})
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local Workspace = game:GetService("Workspace")
+local Camera = Workspace.CurrentCamera
+
+local LocalPlayer = Players.LocalPlayer
+
+local AimbotConfig = {
+    Enabled = false,
+    FOVRadius = 100,
+    CheckOcclusion = false,
+    TeamCheck = false,
+    Color = Color3.fromRGB(255, 255, 255),
+    FOVSize = 1,
+    AimPart = "Đầu",
+    AimSpeed = 0.5,
+    Aimlock = false,
+    MaxDistance = 100,
+    PredictMovement = false,
+    PredictionMultiplier = 0.1,
+    TargetPriority = "Mặc định",
+    
+    Priority = {
+        LowHP = true,
+        Closest = true,
+        CenterScreen = true,
+        MovementPrediction = true
+    }
+}
+
+local CurrentTarget = nil
+local FOVCircle = nil
+local RenderConnection = nil
+
+local function GetAimPartName()
+    if AimbotConfig.AimPart == "Đầu" then
+        return "Head"
+    elseif AimbotConfig.AimPart == "Thân" then
+        return "UpperTorso"
+    end
+    return "Head"
+end
+
+local function GetPlayerTeam(player)
+    if not AimbotConfig.TeamCheck or not player then return nil end
+    
+    local team = player.Team
+    if team then return tostring(team.Name) end
+    
+    local leaderstats = player:FindFirstChild("leaderstats")
+    if leaderstats then
+        local teamValue = leaderstats:FindFirstChild("Team")
+        if teamValue then return tostring(teamValue.Value) end
+    end
+    
+    local data = player:FindFirstChild("Data")
+    if data then
+        local teamValue = data:FindFirstChild("Team")
+        if teamValue then return tostring(teamValue.Value) end
+    end
+    
+    local team = player:FindFirstChild("Team")
+    if team then
+        if team:IsA("StringValue") or team:IsA("IntValue") then
+            return tostring(team.Value)
+        end
+    end
+    
+    local playerGui = player:FindFirstChild("PlayerGui")
+    if playerGui then
+        local hud = playerGui:FindFirstChild("HUD")
+        if hud then
+            local teamName = hud:FindFirstChild("TeamName")
+            if teamName then return tostring(teamName.Text) end
+        end
+    end
+    
+    return nil
+end
+
+local function GetLocalPlayerTeam()
+    if not AimbotConfig.TeamCheck or not LocalPlayer then return nil end
+    
+    local team = LocalPlayer.Team
+    if team then return tostring(team.Name) end
+    
+    local leaderstats = LocalPlayer:FindFirstChild("leaderstats")
+    if leaderstats then
+        local teamValue = leaderstats:FindFirstChild("Team")
+        if teamValue then return tostring(teamValue.Value) end
+    end
+    
+    local data = LocalPlayer:FindFirstChild("Data")
+    if data then
+        local teamValue = data:FindFirstChild("Team")
+        if teamValue then return tostring(teamValue.Value) end
+    end
+    
+    local team = LocalPlayer:FindFirstChild("Team")
+    if team then
+        if team:IsA("StringValue") or team:IsA("IntValue") then
+            return tostring(team.Value)
+        end
+    end
+    
+    local playerGui = LocalPlayer:FindFirstChild("PlayerGui")
+    if playerGui then
+        local hud = playerGui:FindFirstChild("HUD")
+        if hud then
+            local teamName = hud:FindFirstChild("TeamName")
+            if teamName then return tostring(teamName.Text) end
+        end
+    end
+    
+    return nil
+end
+
+local function GetDistance(pos1, pos2)
+    return (pos1 - pos2).Magnitude
+end
+
+local function IsInFOV(screenPos)
+    if screenPos.Z <= 0 then return false end
+    
+    local screenSize = Camera.ViewportSize
+    local screenCenter = Vector2.new(screenSize.X / 2, screenSize.Y / 2)
+    local screenPosVec2 = Vector2.new(screenPos.X, screenPos.Y)
+    local distance = (screenPosVec2 - screenCenter).Magnitude
+    return distance <= AimbotConfig.FOVRadius
+end
+
+local function CanSeeTarget(targetPart)
+    if not AimbotConfig.CheckOcclusion then return true end
+    if not targetPart then return false end
+    
+    local origin = Camera.CFrame.Position
+    local targetPos = targetPart.Position
+    local direction = (targetPos - origin)
+    local distance = direction.Magnitude
+    
+    if distance == 0 then return false end
+    
+    direction = direction.Unit
+    
+    local rayParams = RaycastParams.new()
+    rayParams.FilterType = Enum.RaycastFilterType.Blacklist
+    rayParams.FilterDescendantsInstances = {LocalPlayer.Character, targetPart.Parent}
+    
+    local result = Workspace:Raycast(origin, direction * distance, rayParams)
+    return result == nil
+end
+
+local function PredictTargetPosition(character, aimPart)
+    if not AimbotConfig.PredictMovement or not character or not aimPart then return nil end
+    
+    local humanoidRootPart = character:FindFirstChild("HumanoidRootPart")
+    if not humanoidRootPart then return nil end
+    
+    local velocity = humanoidRootPart.AssemblyLinearVelocity
+    local predictedPos = aimPart.Position + velocity * AimbotConfig.PredictionMultiplier
+    
+    return predictedPos
+end
+
+local function GetAimbotTarget()
+    local bestTarget = nil
+    local bestPriority = nil
+    local localRootPart = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+    
+    if not localRootPart then return nil end
+    
+    local validTargets = {}
+    
+    for _, player in ipairs(Players:GetPlayers()) do
+        if player ~= LocalPlayer then
+            local character = player.Character
+            if character then
+                local humanoid = character:FindFirstChild("Humanoid")
+                local humanoidRootPart = character:FindFirstChild("HumanoidRootPart")
+                
+                if humanoid and humanoidRootPart and humanoid.Health > 0 then
+                    if AimbotConfig.TeamCheck then
+                        local playerTeam = GetPlayerTeam(player)
+                        local localTeam = GetLocalPlayerTeam()
+                        
+                        if playerTeam and localTeam and playerTeam == localTeam then
+                            continue
+                        end
+                    end
+                    
+                    local screenPos = Camera:WorldToViewportPoint(humanoidRootPart.Position)
+                    if not IsInFOV(screenPos) then
+                        continue
+                    end
+                    
+                    local distance = GetDistance(humanoidRootPart.Position, localRootPart.Position)
+                    if distance > AimbotConfig.MaxDistance then
+                        continue
+                    end
+                    
+                    local aimPartName = GetAimPartName()
+                    local aimPart = character:FindFirstChild(aimPartName) or humanoidRootPart
+                    if not CanSeeTarget(aimPart) then
+                        continue
+                    end
+                    
+                    table.insert(validTargets, {
+                        player = player,
+                        character = character,
+                        humanoid = humanoid,
+                        humanoidRootPart = humanoidRootPart,
+                        distance = distance,
+                        health = humanoid.Health
+                    })
+                end
+            end
+        end
+    end
+    
+    if #validTargets == 0 then return nil end
+    
+    if AimbotConfig.TargetPriority == "Mặc định" then
+        bestTarget = validTargets[1].player
+        bestPriority = math.huge
+        
+        for _, target in ipairs(validTargets) do
+            local priority = 0
+            
+            priority = priority - target.health * 100
+            priority = priority + target.distance
+            
+            local screenSize = Camera.ViewportSize
+            local screenCenter = Vector2.new(screenSize.X / 2, screenSize.Y / 2)
+            local screenPos = Camera:WorldToViewportPoint(target.humanoidRootPart.Position)
+            local screenPosVec2 = Vector2.new(screenPos.X, screenPos.Y)
+            local screenDistance = (screenPosVec2 - screenCenter).Magnitude
+            priority = priority + screenDistance
+            
+            if priority < bestPriority then
+                bestPriority = priority
+                bestTarget = target.player
+            end
+        end
+    elseif AimbotConfig.TargetPriority == "Gần nhất" then
+        bestTarget = validTargets[1].player
+        bestPriority = validTargets[1].distance
+        
+        for _, target in ipairs(validTargets) do
+            if target.distance < bestPriority then
+                bestPriority = target.distance
+                bestTarget = target.player
+            end
+        end
+    elseif AimbotConfig.TargetPriority == "Xa nhất" then
+        bestTarget = validTargets[1].player
+        bestPriority = validTargets[1].distance
+        
+        for _, target in ipairs(validTargets) do
+            if target.distance > bestPriority then
+                bestPriority = target.distance
+                bestTarget = target.player
+            end
+        end
+    elseif AimbotConfig.TargetPriority == "Máu thấp nhất" then
+        bestTarget = validTargets[1].player
+        bestPriority = validTargets[1].health
+        
+        for _, target in ipairs(validTargets) do
+            if target.health < bestPriority then
+                bestPriority = target.health
+                bestTarget = target.player
+            end
+        end
+    elseif AimbotConfig.TargetPriority == "Máu cao nhất" then
+        bestTarget = validTargets[1].player
+        bestPriority = validTargets[1].health
+        
+        for _, target in ipairs(validTargets) do
+            if target.health > bestPriority then
+                bestPriority = target.health
+                bestTarget = target.player
+            end
+        end
+    end
+    
+    return bestTarget
+end
+
+local function CreateFOVCircle()
+    if FOVCircle then
+        FOVCircle:Remove()
+    end
+    
+    FOVCircle = Drawing.new("Circle")
+    FOVCircle.Visible = true
+    FOVCircle.Radius = AimbotConfig.FOVRadius
+    FOVCircle.Color = AimbotConfig.Color
+    FOVCircle.Transparency = 0.8
+    FOVCircle.Thickness = AimbotConfig.FOVSize
+    FOVCircle.Filled = false
+end
+
+local function UpdateFOVCircle()
+    if FOVCircle then
+        local screenSize = Camera.ViewportSize
+        FOVCircle.Position = Vector2.new(screenSize.X / 2, screenSize.Y / 2)
+        FOVCircle.Color = AimbotConfig.Color
+        FOVCircle.Thickness = AimbotConfig.FOVSize
+        FOVCircle.Radius = AimbotConfig.FOVRadius
+    end
+end
+
+local function RemoveFOVCircle()
+    if FOVCircle then
+        FOVCircle:Remove()
+        FOVCircle = nil
+    end
+end
+
+local function AimLoop()
+    if not AimbotConfig.Enabled or not LocalPlayer.Character then return end
+    
+    if not AimbotConfig.Aimlock then
+        CurrentTarget = GetAimbotTarget()
+    elseif not CurrentTarget then
+        CurrentTarget = GetAimbotTarget()
+    end
+    
+    if CurrentTarget and CurrentTarget.Character then
+        local targetChar = CurrentTarget.Character
+        local humanoid = targetChar:FindFirstChild("Humanoid")
+        
+        if humanoid and humanoid.Health > 0 then
+            local aimPartName = GetAimPartName()
+            local aimPart = targetChar:FindFirstChild(aimPartName)
+            if not aimPart then
+                aimPart = targetChar:FindFirstChild("HumanoidRootPart")
+            end
+            
+            if aimPart then
+                local canSee = CanSeeTarget(aimPart)
+                
+                if canSee or not AimbotConfig.CheckOcclusion then
+                    local targetPos = PredictTargetPosition(targetChar, aimPart) or aimPart.Position
+                    local currentDir = Camera.CFrame.LookVector
+                    local targetDir = (targetPos - Camera.CFrame.Position).Unit
+                    
+                    local smoothDir = currentDir:Lerp(targetDir, AimbotConfig.AimSpeed)
+                    local targetCFrame = CFrame.lookAt(Camera.CFrame.Position, Camera.CFrame.Position + smoothDir)
+                    
+                    Camera.CFrame = targetCFrame
+                end
+            end
+        elseif AimbotConfig.Aimlock then
+            CurrentTarget = GetAimbotTarget()
+        else
+            CurrentTarget = nil
+        end
+    end
+end
+
+local function UpdateRenderConnection()
+    if AimbotConfig.Enabled then
+        if not RenderConnection then
+            CreateFOVCircle()
+            
+            RenderConnection = RunService.RenderStepped:Connect(function()
+                if not AimbotConfig.Enabled then
+                    RemoveFOVCircle()
+                    if RenderConnection then
+                        RenderConnection:Disconnect()
+                        RenderConnection = nil
+                    end
+                    return
+                end
+                
+                if not LocalPlayer.Character then return end
+                
+                UpdateFOVCircle()
+                AimLoop()
+            end)
+        end
+    else
+        RemoveFOVCircle()
+        if RenderConnection then
+            RenderConnection:Disconnect()
+            RenderConnection = nil
+        end
+        CurrentTarget = nil
+    end
+end
+
+AimTab:Separator({Text = "Aimbot"})
+
+AimTab:Checkbox({
+    Value = false,
+    Label = "Bật Aimbot",
+    Callback = function(self, Value)
+        AimbotConfig.Enabled = Value
+        UpdateRenderConnection()
+    end
+})
+
+AimTab:SliderColor3({
+    Value = Color3.fromRGB(255, 255, 255),
+    Label = "Màu Fov",
+    Callback = function(self, Value)
+        AimbotConfig.Color = Value
+    end
+})
+
+AimTab:SliderFloat({
+    Label = "Bán kính FOV",
+    Value = 100,
+    Minimum = 50,
+    Maximum = 1000,
+    Callback = function(self, Value)
+        AimbotConfig.FOVRadius = Value
+    end
+})
+
+AimTab:SliderFloat({
+    Label = "Tốc độ Aim",
+    Value = 0.5,
+    Minimum = 0.05,
+    Maximum = 1,
+    Step = 0.05,
+    Callback = function(self, Value)
+        AimbotConfig.AimSpeed = Value
+    end
+})
+
+AimTab:Separator({Text = "Cài đặt"})
+
+AimTab:Combo({
+    Label = "Vị trí Aim",
+    Selected = "Đầu",
+    Items = {"Đầu", "Thân"},
+    Callback = function(self, Value)
+        AimbotConfig.AimPart = Value
+        CurrentTarget = nil
+    end
+})
+
+AimTab:Combo({
+    Label = "Khoảng cách Aim",
+    Items = {"50m", "100m", "200m", "300m"},
+    Value = "100m",
+    Callback = function(self, Value)
+        local distanceMap = {
+            ["50m"] = 50,
+            ["100m"] = 100,
+            ["200m"] = 200,
+            ["300m"] = 300
+        }
+        AimbotConfig.MaxDistance = distanceMap[Value] or 100
+    end
+})
+
+AimTab:Combo({
+    Label = "Ưu tiên Aim",
+    Items = {"Mặc định", "Gần nhất", "Xa nhất", "Máu thấp nhất", "Máu cao nhất"},
+    Value = "Mặc định",
+    Callback = function(self, Value)
+        AimbotConfig.TargetPriority = Value
+        CurrentTarget = nil
+    end
+})
+
+AimTab:InputInt({
+    Label = "Khoảng cách tùy chỉnh",
+    Value = 100,
+    Minimum = 50,
+    Maximum = 10000,
+    Callback = function(self, Value)
+        AimbotConfig.MaxDistance = Value
+    end
+})
+
+AimTab:Separator({Text = "Tính năng"})
+
+AimTab:Checkbox({
+    Value = false,
+    Label = "Dự đoán chuyển động",
+    Callback = function(self, Value)
+        AimbotConfig.PredictMovement = Value
+    end
+})
+
+AimTab:SliderFloat({
+    Label = "Độ dự đoán",
+    Value = 0.1,
+    Minimum = 0,
+    Maximum = 0.5,
+    Step = 0.01,
+    Callback = function(self, Value)
+        AimbotConfig.PredictionMultiplier = Value
+    end
+})
+
+AimTab:Checkbox({
+    Value = false,
+    Label = "Kiểm tra tường",
+    Callback = function(self, Value)
+        AimbotConfig.CheckOcclusion = Value
+    end
+})
+
+AimTab:Checkbox({
+    Value = false,
+    Label = "Kiểm tra Team",
+    Callback = function(self, Value)
+        AimbotConfig.TeamCheck = Value
+        CurrentTarget = nil
+    end
+})
+
+AimTab:Checkbox({
+    Value = false,
+    Label = "Aimlock",
+    Callback = function(self, Value)
+        AimbotConfig.Aimlock = Value
+        if not Value then
+            CurrentTarget = nil
+        end
+    end
+})
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local Workspace = game:GetService("Workspace")
+local Camera = Workspace.CurrentCamera
+
+local LocalPlayer = Players.LocalPlayer
+
+local AimbotConfig = {
+    Enabled = false,
+    FOVRadius = 100,
+    CheckOcclusion = false,
+    Color = Color3.fromRGB(255, 255, 255),
+    FOVSize = 1,
+    AimSpeed = 0.5,
+    Aimlock = false,
+    MaxDistance = 100,
+    PredictMovement = false,
+    PredictionMultiplier = 0.1,
+    TargetPriority = "Mặc định",
+    NPCFolder = "Auto Detect"
+}
+
+local CurrentTarget = nil
+local FOVCircle = nil
+local RenderConnection = nil
+local DetectedNPCFolders = {}
+local CachedNPCs = {}
+local LastCacheTime = 0
+local CacheCooldown = 2
+
+local function FindNPCFolders()
+    DetectedNPCFolders = {"Auto Detect"}
+    
+    local function ScanFolders(parent, prefix)
+        for _, obj in ipairs(parent:GetChildren()) do
+            if obj:IsA("Folder") or (obj:IsA("Model") and not obj:FindFirstChild("Humanoid")) then
+                local folderName = if prefix == "" then obj.Name else prefix .. "/" .. obj.Name
+                
+                local hasNPC = false
+                for _, child in ipairs(obj:GetDescendants()) do
+                    if child:IsA("Model") and child:FindFirstChild("Humanoid") then
+                        hasNPC = true
+                        break
+                    end
+                end
+                
+                if hasNPC then
+                    table.insert(DetectedNPCFolders, folderName)
+                end
+                
+                ScanFolders(obj, folderName)
+            end
+        end
+    end
+    
+    ScanFolders(Workspace, "")
+    
+    return DetectedNPCFolders
+end
+
+local function FindAimPart(model)
+    local candidates = {"Head", "UpperTorso", "Torso", "HumanoidRootPart"}
+    
+    for _, partName in ipairs(candidates) do
+        if model:FindFirstChild(partName) then
+            return partName
+        end
+    end
+    
+    return "HumanoidRootPart"
+end
+
+local function GetDistance(pos1, pos2)
+    return (pos1 - pos2).Magnitude
+end
+
+local function IsInFOV(screenPos)
+    if screenPos.Z <= 0 then return false end
+    
+    local screenSize = Camera.ViewportSize
+    local screenCenter = Vector2.new(screenSize.X / 2, screenSize.Y / 2)
+    local screenPosVec2 = Vector2.new(screenPos.X, screenPos.Y)
+    local distance = (screenPosVec2 - screenCenter).Magnitude
+    return distance <= AimbotConfig.FOVRadius
+end
+
+local function CanSeeTarget(targetPart)
+    if not AimbotConfig.CheckOcclusion then return true end
+    if not targetPart then return false end
+    
+    local origin = Camera.CFrame.Position
+    local targetPos = targetPart.Position
+    local direction = (targetPos - origin)
+    local distance = direction.Magnitude
+    
+    if distance == 0 then return false end
+    
+    direction = direction.Unit
+    
+    local rayParams = RaycastParams.new()
+    rayParams.FilterType = Enum.RaycastFilterType.Blacklist
+    rayParams.FilterDescendantsInstances = {LocalPlayer.Character, targetPart.Parent}
+    
+    local result = Workspace:Raycast(origin, direction * distance, rayParams)
+    return result == nil
+end
+
+local function PredictTargetPosition(model, aimPart)
+    if not AimbotConfig.PredictMovement or not model or not aimPart then return nil end
+    
+    local rootPart = model:FindFirstChild("HumanoidRootPart") or model:FindFirstChild("RootPart")
+    if not rootPart then return nil end
+    
+    local velocity = rootPart.AssemblyLinearVelocity
+    local predictedPos = aimPart.Position + velocity * AimbotConfig.PredictionMultiplier
+    
+    return predictedPos
+end
+
+local function GetNPCTarget()
+    local bestTarget = nil
+    local bestPriority = nil
+    local localRootPart = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+    
+    if not localRootPart then return nil end
+    
+    local validTargets = {}
+    
+    for _, npcData in ipairs(CachedNPCs) do
+        local npc = npcData.model
+        if npc and npc.Parent then
+            local humanoid = npc:FindFirstChild("Humanoid")
+            local rootPart = npc:FindFirstChild("HumanoidRootPart") or npc:FindFirstChild("RootPart")
+            
+            if humanoid and rootPart and humanoid.Health > 0 then
+                local distance = GetDistance(rootPart.Position, localRootPart.Position)
+                if distance <= AimbotConfig.MaxDistance then
+                    local screenPos = Camera:WorldToViewportPoint(rootPart.Position)
+                    if IsInFOV(screenPos) then
+                        local aimPartName = npcData.aimPart
+                        local aimPart = npc:FindFirstChild(aimPartName)
+                        if aimPart and CanSeeTarget(aimPart) then
+                            table.insert(validTargets, {
+                                model = npc,
+                                humanoid = humanoid,
+                                rootPart = rootPart,
+                                distance = distance,
+                                health = humanoid.Health,
+                                aimPart = aimPart
+                            })
+                        end
+                    end
+                end
+            end
+        end
+    end
+    
+    if #validTargets == 0 then return nil end
+    
+    if AimbotConfig.TargetPriority == "Mặc định" then
+        bestTarget = validTargets[1].model
+        bestPriority = math.huge
+        
+        for _, target in ipairs(validTargets) do
+            local priority = 0
+            priority = priority - target.health * 100
+            priority = priority + target.distance
+            
+            local screenSize = Camera.ViewportSize
+            local screenCenter = Vector2.new(screenSize.X / 2, screenSize.Y / 2)
+            local screenPos = Camera:WorldToViewportPoint(target.rootPart.Position)
+            local screenPosVec2 = Vector2.new(screenPos.X, screenPos.Y)
+            local screenDistance = (screenPosVec2 - screenCenter).Magnitude
+            priority = priority + screenDistance
+            
+            if priority < bestPriority then
+                bestPriority = priority
+                bestTarget = target.model
+            end
+        end
+    elseif AimbotConfig.TargetPriority == "Gần nhất" then
+        bestTarget = validTargets[1].model
+        bestPriority = validTargets[1].distance
+        
+        for _, target in ipairs(validTargets) do
+            if target.distance < bestPriority then
+                bestPriority = target.distance
+                bestTarget = target.model
+            end
+        end
+    elseif AimbotConfig.TargetPriority == "Xa nhất" then
+        bestTarget = validTargets[1].model
+        bestPriority = validTargets[1].distance
+        
+        for _, target in ipairs(validTargets) do
+            if target.distance > bestPriority then
+                bestPriority = target.distance
+                bestTarget = target.model
+            end
+        end
+    elseif AimbotConfig.TargetPriority == "Máu thấp nhất" then
+        bestTarget = validTargets[1].model
+        bestPriority = validTargets[1].health
+        
+        for _, target in ipairs(validTargets) do
+            if target.health < bestPriority then
+                bestPriority = target.health
+                bestTarget = target.model
+            end
+        end
+    elseif AimbotConfig.TargetPriority == "Máu cao nhất" then
+        bestTarget = validTargets[1].model
+        bestPriority = validTargets[1].health
+        
+        for _, target in ipairs(validTargets) do
+            if target.health > bestPriority then
+                bestPriority = target.health
+                bestTarget = target.model
+            end
+        end
+    end
+    
+    return bestTarget
+end
+
+local function CacheNPCs()
+    CachedNPCs = {}
+    
+    local function SearchForNPCs(parent)
+        for _, obj in ipairs(parent:GetChildren()) do
+            if obj:IsA("Model") and obj ~= LocalPlayer.Character then
+                local humanoid = obj:FindFirstChild("Humanoid")
+                local rootPart = obj:FindFirstChild("HumanoidRootPart") or obj:FindFirstChild("RootPart")
+                
+                if humanoid and rootPart then
+                    local aimPartName = FindAimPart(obj)
+                    table.insert(CachedNPCs, {
+                        model = obj,
+                        aimPart = aimPartName
+                    })
+                end
+            end
+            
+            SearchForNPCs(obj)
+        end
+    end
+    
+    if AimbotConfig.NPCFolder == "Auto Detect" then
+        SearchForNPCs(Workspace)
+    else
+        local function FindFolderByPath(path)
+            local parts = string.split(path, "/")
+            local current = Workspace
+            
+            for _, part in ipairs(parts) do
+                current = current:FindFirstChild(part)
+                if not current then return nil end
+            end
+            
+            return current
+        end
+        
+        local searchFolder = FindFolderByPath(AimbotConfig.NPCFolder)
+        if searchFolder then
+            SearchForNPCs(searchFolder)
+        end
+    end
+    
+    LastCacheTime = tick()
+end
+
+local function CreateFOVCircle()
+    if FOVCircle then
+        FOVCircle:Remove()
+    end
+    
+    FOVCircle = Drawing.new("Circle")
+    FOVCircle.Visible = true
+    FOVCircle.Radius = AimbotConfig.FOVRadius
+    FOVCircle.Color = AimbotConfig.Color
+    FOVCircle.Transparency = 0.8
+    FOVCircle.Thickness = AimbotConfig.FOVSize
+    FOVCircle.Filled = false
+end
+
+local function UpdateFOVCircle()
+    if FOVCircle then
+        local screenSize = Camera.ViewportSize
+        FOVCircle.Position = Vector2.new(screenSize.X / 2, screenSize.Y / 2)
+        FOVCircle.Color = AimbotConfig.Color
+        FOVCircle.Thickness = AimbotConfig.FOVSize
+        FOVCircle.Radius = AimbotConfig.FOVRadius
+    end
+end
+
+local function RemoveFOVCircle()
+    if FOVCircle then
+        FOVCircle:Remove()
+        FOVCircle = nil
+    end
+end
+
+local function AimLoop()
+    if not AimbotConfig.Enabled or not LocalPlayer.Character then return end
+    
+    local currentTime = tick()
+    if currentTime - LastCacheTime >= CacheCooldown then
+        CacheNPCs()
+    end
+    
+    if not AimbotConfig.Aimlock then
+        CurrentTarget = GetNPCTarget()
+    elseif not CurrentTarget or not CurrentTarget.Parent then
+        CurrentTarget = GetNPCTarget()
+    end
+    
+    if CurrentTarget and CurrentTarget.Parent then
+        local humanoid = CurrentTarget:FindFirstChild("Humanoid")
+        local rootPart = CurrentTarget:FindFirstChild("HumanoidRootPart") or CurrentTarget:FindFirstChild("RootPart")
+        
+        if humanoid and rootPart and humanoid.Health > 0 then
+            local aimPartName = FindAimPart(CurrentTarget)
+            local aimPart = CurrentTarget:FindFirstChild(aimPartName)
+            
+            if aimPart then
+                local canSee = CanSeeTarget(aimPart)
+                
+                if canSee or not AimbotConfig.CheckOcclusion then
+                    local targetPos = PredictTargetPosition(CurrentTarget, aimPart) or aimPart.Position
+                    local currentDir = Camera.CFrame.LookVector
+                    local targetDir = (targetPos - Camera.CFrame.Position).Unit
+                    
+                    local smoothDir = currentDir:Lerp(targetDir, AimbotConfig.AimSpeed)
+                    local targetCFrame = CFrame.lookAt(Camera.CFrame.Position, Camera.CFrame.Position + smoothDir)
+                    
+                    Camera.CFrame = targetCFrame
+                end
+            end
+        elseif AimbotConfig.Aimlock then
+            CurrentTarget = GetNPCTarget()
+        else
+            CurrentTarget = nil
+        end
+    end
+end
+
+local function UpdateRenderConnection()
+    if AimbotConfig.Enabled then
+        if not RenderConnection then
+            CreateFOVCircle()
+            
+            RenderConnection = RunService.RenderStepped:Connect(function()
+                if not AimbotConfig.Enabled then
+                    RemoveFOVCircle()
+                    if RenderConnection then
+                        RenderConnection:Disconnect()
+                        RenderConnection = nil
+                    end
+                    return
+                end
+                
+                if not LocalPlayer.Character then return end
+                
+                UpdateFOVCircle()
+                AimLoop()
+            end)
+        end
+    else
+        RemoveFOVCircle()
+        if RenderConnection then
+            RenderConnection:Disconnect()
+            RenderConnection = nil
+        end
+        CurrentTarget = nil
+    end
+end
+
+AimMTab:Separator({Text = "NPC Aimbot"})
+
+AimMTab:Checkbox({
+    Value = false,
+    Label = "Bật NPC Aimbot",
+    Callback = function(self, Value)
+        AimbotConfig.Enabled = Value
+        UpdateRenderConnection()
+    end
+})
+
+AimMTab:SliderColor3({
+    Value = Color3.fromRGB(255, 255, 255),
+    Label = "Màu Fov",
+    Callback = function(self, Value)
+        AimbotConfig.Color = Value
+    end
+})
+
+AimMTab:SliderFloat({
+    Label = "Bán kính FOV",
+    Value = 100,
+    Minimum = 50,
+    Maximum = 1000,
+    Callback = function(self, Value)
+        AimbotConfig.FOVRadius = Value
+    end
+})
+
+AimMTab:SliderFloat({
+    Label = "Tốc độ Aim",
+    Value = 0.5,
+    Minimum = 0.05,
+    Maximum = 1,
+    Step = 0.05,
+    Callback = function(self, Value)
+        AimbotConfig.AimSpeed = Value
+    end
+})
+
+AimMTab:Separator({Text = "Cài đặt"})
+
+AimMTab:Button({
+    Text = "Tìm NPC Folder",
+    Callback = function()
+        FindNPCFolders()
+    end
+})
+
+AimMTab:Combo({
+    Label = "NPC Folder",
+    Selected = "Auto Detect",
+    Items = FindNPCFolders(),
+    Callback = function(self, Value)
+        AimbotConfig.NPCFolder = Value
+        CurrentTarget = nil
+    end
+})
+
+AimMTab:Combo({
+    Label = "Khoảng cách Aim",
+    Items = {"50m", "100m", "200m", "300m"},
+    Value = "100m",
+    Callback = function(self, Value)
+        local distanceMap = {
+            ["50m"] = 50,
+            ["100m"] = 100,
+            ["200m"] = 200,
+            ["300m"] = 300
+        }
+        AimbotConfig.MaxDistance = distanceMap[Value] or 100
+    end
+})
+
+AimMTab:Combo({
+    Label = "Ưu tiên Aim",
+    Items = {"Mặc định", "Gần nhất", "Xa nhất", "Máu thấp nhất", "Máu cao nhất"},
+    Value = "Mặc định",
+    Callback = function(self, Value)
+        AimbotConfig.TargetPriority = Value
+        CurrentTarget = nil
+    end
+})
+
+AimMTab:InputInt({
+    Label = "Khoảng cách tùy chỉnh",
+    Value = 100,
+    Minimum = 50,
+    Maximum = 10000,
+    Callback = function(self, Value)
+        AimbotConfig.MaxDistance = Value
+    end
+})
+
+AimMTab:Separator({Text = "Tính năng"})
+
+AimMTab:Checkbox({
+    Value = false,
+    Label = "Dự đoán chuyển động",
+    Callback = function(self, Value)
+        AimbotConfig.PredictMovement = Value
+    end
+})
+
+AimMTab:SliderFloat({
+    Label = "Độ dự đoán",
+    Value = 0.1,
+    Minimum = 0,
+    Maximum = 0.5,
+    Step = 0.01,
+    Callback = function(self, Value)
+        AimbotConfig.PredictionMultiplier = Value
+    end
+})
+
+AimMTab:Checkbox({
+    Value = false,
+    Label = "Kiểm tra tường",
+    Callback = function(self, Value)
+        AimbotConfig.CheckOcclusion = Value
+    end
+})
+
+AimMTab:Checkbox({
+    Value = false,
+    Label = "Aimlock",
+    Callback = function(self, Value)
+        AimbotConfig.Aimlock = Value
+        if not Value then
+            CurrentTarget = nil
+        end
+    end
+})
+
+local RunService = game:GetService("RunService")
+local Workspace = game:GetService("Workspace")
+local Camera = Workspace.CurrentCamera
+
+local LocalPlayer = game:GetService("Players").LocalPlayer
+local Tracers = {}
+local DrawingPool = {}
+local PoolSize = 0
+local MaxPoolSize = 50
+local RenderConnection = nil
+local CachedNPCs = {}
+local LastCacheTime = 0
+local CacheCooldown = 2
+
+local Config = {
+    TracerColor = Color3.fromRGB(255, 255, 255),
+    TracerThickness = 2,
+    TracerTransparency = 0.8,
+    LerpSpeed = 1,
+    Enabled = false,
+    UseAsync = true,
+    TracerPosition = "Center",
+    NPCFolder = "Auto Detect"
+}
+
+local DetectedNPCFolders = {}
+
+local function FindNPCFolders()
+    DetectedNPCFolders = {"Auto Detect"}
+    
+    local function ScanFolders(parent, prefix)
+        for _, obj in ipairs(parent:GetChildren()) do
+            if obj:IsA("Folder") or (obj:IsA("Model") and not obj:FindFirstChild("Humanoid")) then
+                local folderName = if prefix == "" then obj.Name else prefix .. "/" .. obj.Name
+                
+                local hasNPC = false
+                for _, child in ipairs(obj:GetDescendants()) do
+                    if child:IsA("Model") and child:FindFirstChild("Humanoid") then
+                        hasNPC = true
+                        break
+                    end
+                end
+                
+                if hasNPC then
+                    table.insert(DetectedNPCFolders, folderName)
+                end
+                
+                ScanFolders(obj, folderName)
+            end
+        end
+    end
+    
+    ScanFolders(Workspace, "")
+    
+    return DetectedNPCFolders
+end
+
+local function GetLineFromPool()
+    if PoolSize > 0 then
+        local line = DrawingPool[PoolSize]
+        DrawingPool[PoolSize] = nil
+        PoolSize = PoolSize - 1
+        return line
+    else
+        local line = Drawing.new("Line")
+        line.Color = Config.TracerColor
+        line.Thickness = Config.TracerThickness
+        line.Transparency = Config.TracerTransparency
+        return line
+    end
+end
+
+local function ReturnLineToPool(line)
+    if PoolSize < MaxPoolSize then
+        line.Visible = false
+        PoolSize = PoolSize + 1
+        DrawingPool[PoolSize] = line
+    else
+        line:Remove()
+    end
+end
+
+local function LerpVector2(a, b, t)
+    return Vector2.new(
+        a.X + (b.X - a.X) * t,
+        a.Y + (b.Y - a.Y) * t
+    )
+end
+
+local function RemoveTracer(npc)
+    if Tracers[npc] then
+        local data = Tracers[npc]
+        ReturnLineToPool(data.line)
+        Tracers[npc] = nil
+    end
+end
+
+local function HideAllTracers()
+    for npc, data in pairs(Tracers) do
+        if data and data.line then
+            data.line.Visible = false
+        end
+    end
+end
+
+local function AddTracer(npc)
+    if not Tracers[npc] then
+        local line = GetLineFromPool()
+        Tracers[npc] = {
+            line = line,
+            lastTo = Vector2.new(0, 0),
+            targetTo = Vector2.new(0, 0)
+        }
+    end
+end
+
+local function GetTracerStartPosition()
+    local screenSize = Camera.ViewportSize
+    local x = screenSize.X / 2
+    local y
+    
+    if Config.TracerPosition == "Top" then
+        y = 0
+    elseif Config.TracerPosition == "Bottom" then
+        y = screenSize.Y
+    else
+        y = screenSize.Y / 2
+    end
+    
+    return Vector2.new(x, y)
+end
+
+local function CacheNPCs()
+    CachedNPCs = {}
+    
+    local function SearchForNPCs(parent)
+        for _, obj in ipairs(parent:GetChildren()) do
+            if obj:IsA("Model") and obj ~= LocalPlayer.Character then
+                local humanoid = obj:FindFirstChild("Humanoid")
+                local rootPart = obj:FindFirstChild("HumanoidRootPart") or obj:FindFirstChild("RootPart")
+                
+                if humanoid and rootPart then
+                    table.insert(CachedNPCs, obj)
+                end
+            end
+            
+            SearchForNPCs(obj)
+        end
+    end
+    
+    if Config.NPCFolder == "Auto Detect" then
+        SearchForNPCs(Workspace)
+    else
+        local function FindFolderByPath(path)
+            local parts = string.split(path, "/")
+            local current = Workspace
+            
+            for _, part in ipairs(parts) do
+                current = current:FindFirstChild(part)
+                if not current then return nil end
+            end
+            
+            return current
+        end
+        
+        local searchFolder = FindFolderByPath(Config.NPCFolder)
+        if searchFolder then
+            SearchForNPCs(searchFolder)
+        end
+    end
+    
+    LastCacheTime = tick()
+end
+
+local function BatchUpdateTracers()
+    if not Config.Enabled then 
+        HideAllTracers()
+        return 
+    end
+    
+    CacheNPCs()
+    
+    local screenSize = Camera.ViewportSize
+    local fromPosition = GetTracerStartPosition()
+    
+    local updateBatch = {}
+    
+    for _, npc in ipairs(CachedNPCs) do
+        if not npc or not npc.Parent then
+            if Tracers[npc] then
+                table.insert(updateBatch, {action = "remove", npc = npc})
+            end
+            continue
+        end
+        
+        local humanoid = npc:FindFirstChild("Humanoid")
+        local rootPart = npc:FindFirstChild("HumanoidRootPart") or npc:FindFirstChild("RootPart")
+        
+        if not rootPart or not humanoid or humanoid.Health <= 0 then
+            if Tracers[npc] then
+                table.insert(updateBatch, {action = "remove", npc = npc})
+            end
+            continue
+        end
+        
+        local position, onScreen = Camera:WorldToViewportPoint(rootPart.Position)
+        
+        if position.Z < 0 then
+            if Tracers[npc] then
+                table.insert(updateBatch, {action = "remove", npc = npc})
+            end
+            continue
+        end
+        
+        if not Tracers[npc] then
+            AddTracer(npc)
+        end
+        
+        table.insert(updateBatch, {
+            action = "update",
+            npc = npc,
+            data = Tracers[npc],
+            targetTo = Vector2.new(position.X, position.Y)
+        })
+    end
+    
+    if Config.UseAsync and #updateBatch > 5 then
+        task.spawn(function()
+            for _, update in ipairs(updateBatch) do
+                if update.action == "remove" then
+                    RemoveTracer(update.npc)
+                elseif update.action == "update" then
+                    local npc = update.npc
+                    local data = update.data
+                    
+                    if data then
+                        data.targetTo = update.targetTo
+                        data.lastTo = LerpVector2(data.lastTo, data.targetTo, Config.LerpSpeed)
+                        
+                        data.line.From = fromPosition
+                        data.line.To = data.lastTo
+                        data.line.Visible = true
+                        data.line.Color = Config.TracerColor
+                        data.line.Thickness = Config.TracerThickness
+                        data.line.Transparency = Config.TracerTransparency
+                    end
+                end
+            end
+        end)
+    else
+        for _, update in ipairs(updateBatch) do
+            if update.action == "remove" then
+                RemoveTracer(update.npc)
+            elseif update.action == "update" then
+                local npc = update.npc
+                local data = update.data
+                
+                if data then
+                    data.targetTo = update.targetTo
+                    data.lastTo = LerpVector2(data.lastTo, data.targetTo, Config.LerpSpeed)
+                    
+                    data.line.From = fromPosition
+                    data.line.To = data.lastTo
+                    data.line.Visible = true
+                    data.line.Color = Config.TracerColor
+                    data.line.Thickness = Config.TracerThickness
+                    data.line.Transparency = Config.TracerTransparency
+                end
+            end
+        end
+    end
+end
+
+if RenderConnection then
+    RenderConnection:Disconnect()
+end
+RenderConnection = RunService.RenderStepped:Connect(BatchUpdateTracers)
+
+local function Cleanup()
+    if RenderConnection then
+        RenderConnection:Disconnect()
+    end
+    for npc, _ in pairs(Tracers) do
+        RemoveTracer(npc)
+    end   
+    for i = 1, PoolSize do
+        if DrawingPool[i] then
+            DrawingPool[i]:Remove()
+        end
+    end
+    DrawingPool = {}
+    PoolSize = 0
+end
+
+EspMTab:Separator({Text = "NPC Tracer"})
+
+EspMTab:Checkbox({
+	Value = false,
+	Label = "Bật NPC Tracer",
+	Callback = function(self, Value)
+		Config.Enabled = Value
+	end
+})
+
+EspMTab:SliderColor3({
+	Value = Color3.fromRGB(255, 255, 255),
+	Label = "Màu Tracer",
+	Callback = function(self, Value)
+		Config.TracerColor = Value
+	end
+})
+
+EspMTab:Combo({
+	Label = "Vị Trí Tracer",
+	Selected = "Center",
+	Items = {"Top", "Bottom", "Center"},
+	Callback = function(self, Value)
+		Config.TracerPosition = Value
+	end
+})
+
+EspMTab:Separator({Text = "Cài Đặt"})
+
+EspMTab:Button({
+	Text = "Tìm NPC Folder",
+	Callback = function()
+		FindNPCFolders()
+	end
+})
+
+EspMTab:Combo({
+	Label = "NPC Folder",
+	Selected = "Auto Detect",
+	Items = FindNPCFolders(),
+	Callback = function(self, Value)
+		Config.NPCFolder = Value
+		HideAllTracers()
+		Tracers = {}
+		CacheNPCs()
+	end
+})
+
+EspMTab:Separator({Text = "Cài Đặt Nâng Cao"})
+
+EspMTab:Checkbox({
+	Value = true,
+	Label = "Async Update",
+	Callback = function(self, Value)
+		Config.UseAsync = Value
+	end
+})
+
+local RunService = game:GetService("RunService")
+local Workspace = game:GetService("Workspace")
+local Camera = Workspace.CurrentCamera
+
+local LocalPlayer = game:GetService("Players").LocalPlayer
+
+local CONFIG = {
+    Enabled = false,
+    BoxThickness = 2,
+    BoxColor = Color3.fromRGB(255, 255, 255),
+    BoxTransparency = 0.8,
+    UseAsync = true,
+    NPCFolder = "Auto Detect"
+}
+
+local NPCBoxes = {}
+local DrawingPool = {}
+local PoolSize = 0
+local MaxPoolSize = 50
+local CachedNPCs = {}
+local LastCacheTime = 0
+local CacheCooldown = 2
+local DetectedNPCFolders = {}
+
+local function FindNPCFolders()
+    DetectedNPCFolders = {"Auto Detect"}
+    
+    local function ScanFolders(parent, prefix)
+        for _, obj in ipairs(parent:GetChildren()) do
+            if obj:IsA("Folder") or (obj:IsA("Model") and not obj:FindFirstChild("Humanoid")) then
+                local folderName = if prefix == "" then obj.Name else prefix .. "/" .. obj.Name
+                
+                local hasNPC = false
+                for _, child in ipairs(obj:GetDescendants()) do
+                    if child:IsA("Model") and child:FindFirstChild("Humanoid") then
+                        hasNPC = true
+                        break
+                    end
+                end
+                
+                if hasNPC then
+                    table.insert(DetectedNPCFolders, folderName)
+                end
+                
+                ScanFolders(obj, folderName)
+            end
+        end
+    end
+    
+    ScanFolders(Workspace, "")
+    
+    return DetectedNPCFolders
+end
+
+local function GetLineFromPool()
+    if PoolSize > 0 then
+        local line = DrawingPool[PoolSize]
+        DrawingPool[PoolSize] = nil
+        PoolSize = PoolSize - 1
+        return line
+    else
+        local line = Drawing.new("Line")
+        line.Thickness = CONFIG.BoxThickness
+        line.Color = CONFIG.BoxColor
+        line.Transparency = CONFIG.BoxTransparency
+        return line
+    end
+end
+
+local function ReturnLineToPool(line)
+    if PoolSize < MaxPoolSize then
+        line.Visible = false
+        PoolSize = PoolSize + 1
+        DrawingPool[PoolSize] = line
+    else
+        line:Remove()
+    end
+end
+
+local function CacheNPCs()
+    CachedNPCs = {}
+    
+    local function SearchForNPCs(parent)
+        for _, obj in ipairs(parent:GetChildren()) do
+            if obj:IsA("Model") and obj ~= LocalPlayer.Character then
+                local humanoid = obj:FindFirstChild("Humanoid")
+                local rootPart = obj:FindFirstChild("HumanoidRootPart") or obj:FindFirstChild("RootPart")
+                
+                if humanoid and rootPart then
+                    table.insert(CachedNPCs, obj)
+                end
+            end
+            
+            SearchForNPCs(obj)
+        end
+    end
+    
+    if CONFIG.NPCFolder == "Auto Detect" then
+        SearchForNPCs(Workspace)
+    else
+        local function FindFolderByPath(path)
+            local parts = string.split(path, "/")
+            local current = Workspace
+            
+            for _, part in ipairs(parts) do
+                current = current:FindFirstChild(part)
+                if not current then return nil end
+            end
+            
+            return current
+        end
+        
+        local searchFolder = FindFolderByPath(CONFIG.NPCFolder)
+        if searchFolder then
+            SearchForNPCs(searchFolder)
+        end
+    end
+    
+    LastCacheTime = tick()
+end
+
+local function DrawBox2D(npc)
+    if not npc or not npc.Parent then return nil end
+    
+    local humanoidRootPart = npc:FindFirstChild("HumanoidRootPart") or npc:FindFirstChild("RootPart")
+    local humanoid = npc:FindFirstChild("Humanoid")
+    local head = npc:FindFirstChild("Head")
+    
+    if not humanoidRootPart or not humanoid or humanoid.Health <= 0 then
+        return nil
+    end
+    
+    if not head then
+        head = humanoidRootPart
+    end
+    
+    local topPosition = head.Position + Vector3.new(0, head.Size.Y / 2, 0)
+    local bottomPosition = humanoidRootPart.Position - Vector3.new(0, 3, 0)
+    
+    local topScreen = Camera:WorldToViewportPoint(topPosition)
+    local bottomScreen = Camera:WorldToViewportPoint(bottomPosition)
+    local centerScreen = Camera:WorldToViewportPoint(humanoidRootPart.Position)
+    
+    if topScreen.Z <= 0 or bottomScreen.Z <= 0 then
+        return nil
+    end
+    
+    local screenHeight = math.abs(topScreen.Y - bottomScreen.Y)
+    local screenWidth = screenHeight * 0.6
+    
+    local centerX = centerScreen.X
+    local topLeftX = centerX - screenWidth / 2
+    local topLeftY = topScreen.Y
+    local topRightX = centerX + screenWidth / 2
+    local topRightY = topScreen.Y
+    local bottomLeftX = centerX - screenWidth / 2
+    local bottomLeftY = bottomScreen.Y
+    local bottomRightX = centerX + screenWidth / 2
+    local bottomRightY = bottomScreen.Y
+    
+    return {
+        TopLeft = Vector2.new(topLeftX, topLeftY),
+        TopRight = Vector2.new(topRightX, topRightY),
+        BottomLeft = Vector2.new(bottomLeftX, bottomLeftY),
+        BottomRight = Vector2.new(bottomRightX, bottomRightY)
+    }
+end
+
+local function UpdateBox(npc)
+    if not npc or not npc.Parent then
+        if NPCBoxes[npc] then
+            for _, line in ipairs(NPCBoxes[npc].Lines) do
+                ReturnLineToPool(line)
+            end
+            NPCBoxes[npc] = nil
+        end
+        return
+    end
+    
+    local boxPoints = DrawBox2D(npc)
+    if not boxPoints then
+        if NPCBoxes[npc] then
+            for _, line in ipairs(NPCBoxes[npc].Lines) do
+                line.Visible = false
+            end
+        end
+        return
+    end
+    
+    if not NPCBoxes[npc] then
+        NPCBoxes[npc] = {
+            Lines = {}
+        }
+        for i = 1, 4 do
+            table.insert(NPCBoxes[npc].Lines, GetLineFromPool())
+        end
+    end
+    
+    local lines = NPCBoxes[npc].Lines
+    
+    lines[1].From = boxPoints.TopLeft
+    lines[1].To = boxPoints.TopRight
+    lines[1].Visible = true
+    lines[1].Color = CONFIG.BoxColor
+    lines[1].Thickness = CONFIG.BoxThickness
+    lines[1].Transparency = CONFIG.BoxTransparency
+    
+    lines[2].From = boxPoints.TopRight
+    lines[2].To = boxPoints.BottomRight
+    lines[2].Visible = true
+    lines[2].Color = CONFIG.BoxColor
+    lines[2].Thickness = CONFIG.BoxThickness
+    lines[2].Transparency = CONFIG.BoxTransparency
+    
+    lines[3].From = boxPoints.BottomRight
+    lines[3].To = boxPoints.BottomLeft
+    lines[3].Visible = true
+    lines[3].Color = CONFIG.BoxColor
+    lines[3].Thickness = CONFIG.BoxThickness
+    lines[3].Transparency = CONFIG.BoxTransparency
+    
+    lines[4].From = boxPoints.BottomLeft
+    lines[4].To = boxPoints.TopLeft
+    lines[4].Visible = true
+    lines[4].Color = CONFIG.BoxColor
+    lines[4].Thickness = CONFIG.BoxThickness
+    lines[4].Transparency = CONFIG.BoxTransparency
+end
+
+local function UpdateAllBoxes()
+    local currentTime = tick()
+    if currentTime - LastCacheTime >= CacheCooldown then
+        CacheNPCs()
+    end
+    
+    if not CONFIG.Enabled then
+        for npc, data in pairs(NPCBoxes) do
+            if data and data.Lines then
+                for _, line in ipairs(data.Lines) do
+                    line.Visible = false
+                end
+            end
+        end
+        return
+    end
+    
+    local updateBatch = {}
+    for _, npc in ipairs(CachedNPCs) do
+        table.insert(updateBatch, npc)
+    end
+    
+    if CONFIG.UseAsync and #updateBatch > 5 then
+        task.spawn(function()
+            for _, npc in ipairs(updateBatch) do
+                UpdateBox(npc)
+            end
+        end)
+    else
+        for _, npc in ipairs(updateBatch) do
+            UpdateBox(npc)
+        end
+    end
+end
+
+local function RemoveBox(npc)
+    if NPCBoxes[npc] then
+        for _, line in ipairs(NPCBoxes[npc].Lines) do
+            ReturnLineToPool(line)
+        end
+        NPCBoxes[npc] = nil
+    end
+end
+
+RunService.RenderStepped:Connect(UpdateAllBoxes)
+
+EspMTab:Separator({Text = "NPC Box 2D"})
+
+EspMTab:Checkbox({
+	Value = false,
+	Label = "Bật NPC Box 2D",
+	Callback = function(self, Value)
+		CONFIG.Enabled = Value
+	end
+})
+
+EspMTab:SliderColor3({
+	Value = Color3.fromRGB(255, 255, 255),
+	Label = "Màu Box",
+	Callback = function(self, Value)
+		CONFIG.BoxColor = Value
+	end
+})
+
+EspMTab:Separator({Text = "Cài Đặt"})
+
+EspMTab:Button({
+	Text = "Tìm NPC Folder",
+	Callback = function()
+		FindNPCFolders()
+	end
+})
+
+EspMTab:Combo({
+	Label = "NPC Folder",
+	Selected = "Auto Detect",
+	Items = FindNPCFolders(),
+	Callback = function(self, Value)
+		CONFIG.NPCFolder = Value
+		for npc, _ in pairs(NPCBoxes) do
+			RemoveBox(npc)
+		end
+		CacheNPCs()
+	end
+})
+
+EspMTab:Separator({Text = "Cài Đặt Nâng Cao"})
+
+EspMTab:Checkbox({
+	Value = true,
+	Label = "Async Update",
+	Callback = function(self, Value)
+		CONFIG.UseAsync = Value
+	end
+})
+
+local RunService = game:GetService("RunService")
+local Workspace = game:GetService("Workspace")
+local Camera = Workspace.CurrentCamera
+
+local LocalPlayer = game:GetService("Players").LocalPlayer
+
+local CONFIG = {
+    Enabled = false,
+    BoxThickness = 2,
+    BoxColor = Color3.fromRGB(255, 255, 255),
+    BoxTransparency = 0.8,
+    UseAsync = true,
+    NPCFolder = "Auto Detect",
+    MaxDistance = 500 -- Chỉ vẽ box cho NPC trong phạm vi này
+}
+
+local NPCBoxes = {}
+local DrawingPool = {}
+local PoolSize = 0
+local MaxPoolSize = 200
+local CachedNPCs = {}
+local LastCacheTime = 0
+local CacheCooldown = 2
+local DetectedNPCFolders = {}
+
+local function FindNPCFolders()
+    DetectedNPCFolders = {"Auto Detect"}
+    
+    local function ScanFolders(parent, prefix)
+        for _, obj in ipairs(parent:GetChildren()) do
+            if obj:IsA("Folder") or (obj:IsA("Model") and not obj:FindFirstChild("Humanoid")) then
+                local folderName = if prefix == "" then obj.Name else prefix .. "/" .. obj.Name
+                
+                local hasNPC = false
+                for _, child in ipairs(obj:GetDescendants()) do
+                    if child:IsA("Model") and child:FindFirstChild("Humanoid") then
+                        hasNPC = true
+                        break
+                    end
+                end
+                
+                if hasNPC then
+                    table.insert(DetectedNPCFolders, folderName)
+                end
+                
+                ScanFolders(obj, folderName)
+            end
+        end
+    end
+    
+    ScanFolders(Workspace, "")
+    
+    return DetectedNPCFolders
+end
+
+local function GetLineFromPool()
+    if PoolSize > 0 then
+        local line = DrawingPool[PoolSize]
+        DrawingPool[PoolSize] = nil
+        PoolSize = PoolSize - 1
+        return line
+    else
+        local line = Drawing.new("Line")
+        line.Thickness = CONFIG.BoxThickness
+        line.Color = CONFIG.BoxColor
+        line.Transparency = CONFIG.BoxTransparency
+        return line
+    end
+end
+
+local function ReturnLineToPool(line)
+    if PoolSize < MaxPoolSize then
+        line.Visible = false
+        PoolSize = PoolSize + 1
+        DrawingPool[PoolSize] = line
+    else
+        line:Remove()
+    end
+end
+
+local function CacheNPCs()
+    CachedNPCs = {}
+    
+    local function SearchForNPCs(parent)
+        for _, obj in ipairs(parent:GetChildren()) do
+            if obj:IsA("Model") and obj ~= LocalPlayer.Character then
+                local humanoid = obj:FindFirstChild("Humanoid")
+                local rootPart = obj:FindFirstChild("HumanoidRootPart") or obj:FindFirstChild("RootPart")
+                
+                if humanoid and rootPart then
+                    table.insert(CachedNPCs, obj)
+                end
+            end
+            
+            SearchForNPCs(obj)
+        end
+    end
+    
+    if CONFIG.NPCFolder == "Auto Detect" then
+        SearchForNPCs(Workspace)
+    else
+        local function FindFolderByPath(path)
+            local parts = string.split(path, "/")
+            local current = Workspace
+            
+            for _, part in ipairs(parts) do
+                current = current:FindFirstChild(part)
+                if not current then return nil end
+            end
+            
+            return current
+        end
+        
+        local searchFolder = FindFolderByPath(CONFIG.NPCFolder)
+        if searchFolder then
+            SearchForNPCs(searchFolder)
+        end
+    end
+    
+    LastCacheTime = tick()
+end
+
+local function DrawBox3D(npc)
+    if not npc or not npc.Parent then return nil end
+    
+    local humanoid = npc:FindFirstChild("Humanoid")
+    local rootPart = npc:FindFirstChild("HumanoidRootPart") or npc:FindFirstChild("RootPart")
+    
+    if not humanoid or humanoid.Health <= 0 or not rootPart then
+        return nil
+    end
+    
+    local localRootPart = LocalPlayer.Character and (LocalPlayer.Character:FindFirstChild("HumanoidRootPart") or LocalPlayer.Character:FindFirstChild("RootPart"))
+    if localRootPart and (rootPart.Position - localRootPart.Position).Magnitude > CONFIG.MaxDistance then
+        return nil
+    end
+    
+    local minX, maxX = math.huge, -math.huge
+    local minY, maxY = math.huge, -math.huge
+    local minZ, maxZ = math.huge, -math.huge
+    
+    for _, part in ipairs(npc:GetDescendants()) do
+        if part:IsA("BasePart") then
+            local pos = part.Position
+            local size = part.Size
+            
+            minX = math.min(minX, pos.X - size.X / 2)
+            maxX = math.max(maxX, pos.X + size.X / 2)
+            minY = math.min(minY, pos.Y - size.Y / 2)
+            maxY = math.max(maxY, pos.Y + size.Y / 2)
+            minZ = math.min(minZ, pos.Z - size.Z / 2)
+            maxZ = math.max(maxZ, pos.Z + size.Z / 2)
+        end
+    end
+    
+    if minX == math.huge then
+        return nil
+    end
+    
+    local corners = {
+        Vector3.new(minX, minY, minZ),
+        Vector3.new(maxX, minY, minZ),
+        Vector3.new(maxX, minY, maxZ),
+        Vector3.new(minX, minY, maxZ),
+        Vector3.new(minX, maxY, minZ),
+        Vector3.new(maxX, maxY, minZ),
+        Vector3.new(maxX, maxY, maxZ),
+        Vector3.new(minX, maxY, maxZ)
+    }
+    
+    local screenCorners = {}
+    for i, corner in ipairs(corners) do
+        local screenPos = Camera:WorldToViewportPoint(corner)
+        if screenPos.Z <= 0 then
+            return nil
+        end
+        screenCorners[i] = Vector2.new(screenPos.X, screenPos.Y)
+    end
+    
+    return screenCorners
+end
+
+local function UpdateBox(npc)
+    if not npc or not npc.Parent then
+        if NPCBoxes[npc] then
+            for _, line in ipairs(NPCBoxes[npc].Lines) do
+                ReturnLineToPool(line)
+            end
+            NPCBoxes[npc] = nil
+        end
+        return
+    end
+    
+    local screenCorners = DrawBox3D(npc)
+    if not screenCorners then
+        if NPCBoxes[npc] then
+            for _, line in ipairs(NPCBoxes[npc].Lines) do
+                line.Visible = false
+            end
+        end
+        return
+    end
+    
+    if not NPCBoxes[npc] then
+        NPCBoxes[npc] = {
+            Lines = {}
+        }
+        for i = 1, 12 do
+            table.insert(NPCBoxes[npc].Lines, GetLineFromPool())
+        end
+    end
+    
+    local lines = NPCBoxes[npc].Lines
+    local lineIndex = 1
+    
+    for i = 1, 4 do
+        lines[lineIndex].From = screenCorners[i]
+        lines[lineIndex].To = screenCorners[i % 4 + 1]
+        lines[lineIndex].Visible = true
+        lines[lineIndex].Color = CONFIG.BoxColor
+        lines[lineIndex].Thickness = CONFIG.BoxThickness
+        lines[lineIndex].Transparency = CONFIG.BoxTransparency
+        lineIndex = lineIndex + 1
+    end
+    
+    for i = 5, 8 do
+        lines[lineIndex].From = screenCorners[i]
+        lines[lineIndex].To = screenCorners[(i - 4) % 4 + 5]
+        lines[lineIndex].Visible = true
+        lines[lineIndex].Color = CONFIG.BoxColor
+        lines[lineIndex].Thickness = CONFIG.BoxThickness
+        lines[lineIndex].Transparency = CONFIG.BoxTransparency
+        lineIndex = lineIndex + 1
+    end
+    
+    for i = 1, 4 do
+        lines[lineIndex].From = screenCorners[i]
+        lines[lineIndex].To = screenCorners[i + 4]
+        lines[lineIndex].Visible = true
+        lines[lineIndex].Color = CONFIG.BoxColor
+        lines[lineIndex].Thickness = CONFIG.BoxThickness
+        lines[lineIndex].Transparency = CONFIG.BoxTransparency
+        lineIndex = lineIndex + 1
+    end
+end
+
+local function UpdateAllBoxes()
+    local currentTime = tick()
+    if currentTime - LastCacheTime >= CacheCooldown then
+        CacheNPCs()
+    end
+    
+    if not CONFIG.Enabled then
+        for npc, data in pairs(NPCBoxes) do
+            if data and data.Lines then
+                for _, line in ipairs(data.Lines) do
+                    line.Visible = false
+                end
+            end
+        end
+        return
+    end
+    
+    local updateBatch = {}
+    for _, npc in ipairs(CachedNPCs) do
+        table.insert(updateBatch, npc)
+    end
+    
+    if CONFIG.UseAsync and #updateBatch > 5 then
+        task.spawn(function()
+            for _, npc in ipairs(updateBatch) do
+                UpdateBox(npc)
+            end
+        end)
+    else
+        for _, npc in ipairs(updateBatch) do
+            UpdateBox(npc)
+        end
+    end
+end
+
+local function RemoveBox(npc)
+    if NPCBoxes[npc] then
+        for _, line in ipairs(NPCBoxes[npc].Lines) do
+            ReturnLineToPool(line)
+        end
+        NPCBoxes[npc] = nil
+    end
+end
+
+RunService.RenderStepped:Connect(UpdateAllBoxes)
+
+EspMTab:Separator({Text = "NPC Box 3D"})
+
+EspMTab:Checkbox({
+	Value = false,
+	Label = "Bật NPC Box 3D",
+	Callback = function(self, Value)
+		CONFIG.Enabled = Value
+	end
+})
+
+EspMTab:SliderColor3({
+	Value = Color3.fromRGB(255, 255, 255),
+	Label = "Màu Box",
+	Callback = function(self, Value)
+		CONFIG.BoxColor = Value
+	end
+})
+
+EspMTab:Slider({
+	Min = 1,
+	Max = 5,
+	Value = 2,
+	Label = "Độ Dày Box",
+	Callback = function(self, Value)
+		CONFIG.BoxThickness = Value
+	end
+})
+
+EspMTab:Slider({
+	Min = 0,
+	Max = 1,
+	Value = 0.8,
+	Step = 0.1,
+	Label = "Độ Trong Suốt",
+	Callback = function(self, Value)
+		CONFIG.BoxTransparency = Value
+	end
+})
+
+EspMTab:Separator({Text = "Cài Đặt"})
+
+EspMTab:Button({
+	Text = "Tìm NPC Folder",
+	Callback = function()
+		FindNPCFolders()
+	end
+})
+
+EspMTab:Combo({
+	Label = "NPC Folder",
+	Selected = "Auto Detect",
+	Items = FindNPCFolders(),
+	Callback = function(self, Value)
+		CONFIG.NPCFolder = Value
+		for npc, _ in pairs(NPCBoxes) do
+			RemoveBox(npc)
+		end
+		CacheNPCs()
+	end
+})
+
+EspMTab:Slider({
+	Min = 50,
+	Max = 1000,
+	Value = 500,
+	Step = 50,
+	Label = "Khoảng Cách Tối Đa",
+	Callback = function(self, Value)
+		CONFIG.MaxDistance = Value
+	end
+})
+
+EspMTab:Separator({Text = "Cài Đặt Nâng Cao"})
+
+EspMTab:Checkbox({
+	Value = true,
+	Label = "Async Update",
+	Callback = function(self, Value)
+		CONFIG.UseAsync = Value
+	end
+})
